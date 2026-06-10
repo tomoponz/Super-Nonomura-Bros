@@ -1,1 +1,46 @@
+body {
+    margin: 0;
+    padding: 20px;
+    background-color: #333;
+    display: flex;
+    justify-content: center;
+}
 
+#game-container {
+    position: relative;
+    width: 640px;
+    height: 480px;
+    background-color: #87CEEB; /* ゲーム背景色（空色） */
+    overflow: hidden;
+}
+
+canvas {
+    display: block;
+}
+
+#start-screen {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10;
+}
+
+#start-button {
+    font-size: 24px;
+    font-weight: bold;
+    padding: 15px 40px;
+    cursor: pointer;
+    border-radius: 8px;
+    border: none;
+}
+
+/* YouTubeプレイヤーは完全に隠す */
+#youtube-player {
+    display: none;
+}

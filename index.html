@@ -1,25 +1,65 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <title>スーパー野々村ブラザーズ</title>
-    <link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#74b9ff" />
+    <title>Super Nonomura Bros - Original Side Scroller</title>
+    <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+    <main id="game-shell">
+        <section id="game-container" aria-label="横スクロールゲーム">
+            <canvas id="gameCanvas" width="960" height="540"></canvas>
 
-    <div id="game-container">
-        <canvas id="gameCanvas" width="640" height="480"></canvas>
-        
-        <div id="start-screen">
-            <button id="start-button">ゲームスタート</button>
-        </div>
-    </div>
+            <div id="hud" aria-live="polite">
+                <span id="hud-title">SUPER NONOMURA BROS</span>
+                <span>COIN <strong id="coin-count">0</strong></span>
+                <span>LIFE <strong id="life-count">3</strong></span>
+                <span>TIME <strong id="time-count">300</strong></span>
+            </div>
 
-    <div id="youtube-player"></div>
+            <div id="start-screen" class="overlay">
+                <div class="panel">
+                    <p class="kicker">Original horizontal scroll course</p>
+                    <h1>Super Nonomura Bros</h1>
+                    <p>
+                        スマホでは左下の左右ボタン、右下のジャンプボタンで操作できます。<br />
+                        PCでは ← → / A D で移動、↑ / W / Space でジャンプです。
+                    </p>
+                    <label class="file-button">
+                        操作キャラ画像を選ぶ
+                        <input id="player-image-input" type="file" accept="image/*" />
+                    </label>
+                    <button id="start-button" type="button">ゲームスタート</button>
+                    <p class="small-note">画像はあとからでも <code>assets/images/player/player_icon.png</code> を置けば差し替えできます。</p>
+                </div>
+            </div>
 
-    <script src="https://www.youtube.com/iframe_api"></script>
+            <div id="result-screen" class="overlay hidden">
+                <div class="panel">
+                    <p id="result-kicker" class="kicker">RESULT</p>
+                    <h2 id="result-title">CLEAR!</h2>
+                    <p id="result-message">ゴールしました。</p>
+                    <button id="retry-button" type="button">もう一度遊ぶ</button>
+                </div>
+            </div>
+
+            <div id="touch-controls" aria-label="スマホ操作ボタン">
+                <div class="touch-left-group">
+                    <button class="touch-button" data-key="left" aria-label="左へ移動">◀</button>
+                    <button class="touch-button" data-key="right" aria-label="右へ移動">▶</button>
+                </div>
+                <button class="touch-button jump-button" data-key="jump" aria-label="ジャンプ">JUMP</button>
+            </div>
+        </section>
+
+        <section id="help-card">
+            <h2>GitHub Pages 用メモ</h2>
+            <p>このフォルダをそのままGitHubに置き、Pagesを有効化すればブラウザで遊べます。画像を決めたら <code>assets/images/player/player_icon.png</code> として追加してください。</p>
+        </section>
+    </main>
+
     <script src="script.js"></script>
-
 </body>
 </html>

@@ -188,8 +188,12 @@ const state = {
 const hero = {
     x: 80,
     y: 330,
+    // w/h は当たり判定。drawW/drawH は見た目の大きさ。
+    // 画像を大きくしても、足場や敵との判定が理不尽になりにくいよう分離しています。
     w: 48,
     h: 64,
+    drawW: 84,
+    drawH: 104,
     vx: 0,
     vy: 0,
     grounded: false,
@@ -289,8 +293,8 @@ function enemy(x, y, minX, maxX, speed) {
         y: hitY,
         w: hitW,
         h: hitH,
-        drawW: 72,
-        drawH: 66,
+        drawW: 108,
+        drawH: 96,
         vx: speed,
         startVx: speed,
         minX,
@@ -823,7 +827,11 @@ function drawHero() {
     if (hero.facing < 0) ctx.scale(-1, 1);
 
     if (isLoadedImage(currentImg)) {
-        drawImageContain(currentImg, -hero.w / 2, -hero.h / 2, hero.w, hero.h, true);
+        const drawW = hero.drawW || hero.w;
+        const drawH = hero.drawH || hero.h;
+        const drawX = -drawW / 2;
+        const drawY = hero.h / 2 - drawH;
+        drawImageContain(currentImg, drawX, drawY, drawW, drawH, true);
     } else {
         drawFallbackHero();
     }

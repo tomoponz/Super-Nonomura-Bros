@@ -1,4 +1,3 @@
-
 // ==========================================
 // 1. YouTube API と BGM制御のセットアップ
 // ==========================================
@@ -6,10 +5,9 @@ let player;
 let isGameOver = false;
 let loopCheckInterval;
 
-// 対象のYouTube動画ID（URLの v= の後の文字列）を指定してください
-const VIDEO_ID = 'vHbkhn2AI8g&t=1s'; 
+// 動画ID（&t=1s などのパラメータは外し、純粋なIDのみを指定します）
+const VIDEO_ID = 'vHbkhn2AI8g'; 
 
-// YouTube APIのコードが読み込まれると自動的に実行される関数
 function onYouTubeIframeAPIReady() {
     player = new YT.Player('youtube-player', {
         height: '0',
@@ -27,15 +25,11 @@ function onYouTubeIframeAPIReady() {
     });
 }
 
-// プレイヤーの準備が完了した時の処理
 function onPlayerReady(event) {
-    // 準備ができたらスタートボタンを押せるようにするなどの処理を入れると親切です
     console.log("BGMの準備が完了しました");
 }
 
-// 動画の再生状態が変わった時の処理
 function onPlayerStateChange(event) {
-    // 再生中（PLAYING: 1）になったらループ監視を開始
     if (event.data === YT.PlayerState.PLAYING) {
         startLoopCheck();
     } else {
@@ -43,7 +37,6 @@ function onPlayerStateChange(event) {
     }
 }
 
-// 4秒〜84秒のループを監視する処理
 function startLoopCheck() {
     clearInterval(loopCheckInterval);
     loopCheckInterval = setInterval(() => {
@@ -51,62 +44,128 @@ function startLoopCheck() {
 
         let currentTime = player.getCurrentTime();
         
-        // 通常時：84秒を超えたら強制的に4秒に戻す
+        // 通常時：84秒（1分24秒）を超えたら強制的に4秒に戻す
         if (!isGameOver && currentTime >= 84) {
             player.seekTo(4, true);
         }
-    }, 100); // 0.1秒ごとにチェック
+    }, 100);
 }
+
+// ==========================================
+// 2. ゲームの描画・キャラクター制御セットアップ
+// ==========================================
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// 画像の読み込み（パスは指定された階層構造に準拠）
+const imgMove = new Image();
+imgMove.src = 'assets/images/player/player_move.png';
+
+const imgStop = new Image();
+imgStop.src = 'assets/images/player/player_stop.png';
+
+// プレイヤーの状態を管理するオブジェクト
+const playerObj = {
+    x: canvas.width / 2, // 初期位置X
+    y: 350,              // 初期位置Y
+    width: 64,           // ※画像のサイズに合わせて調整してください
+    height: 64,          // ※画像のサイズに合わせて調整してください
+    speed: 5,            // 移動スピード
+    isMoving: false,     // 動いているかどうかのフラグ
+    facingRight: true    // 右を向いているかどうかのフラグ（true=右, false=左）
+};
+
+// キーボード入力を監視
+const keys = {};
+window.addEventListener('keydown', (e) => { keys[e.code] = true; });
+window.addEventListener('keyup', (e) => { keys[e.code] = false; });
 
 
 // ==========================================
-// 2. ゲーム画面のイベントと連携
+// 3. ゲームのメインループ（移動・描画・判定）
 // ==========================================
 
 // スタートボタンが押された時の処理
 document.getElementById('start-button').addEventListener('click', () => {
-    // スタート画面を隠す
     document.getElementById('start-screen').style.display = 'none';
-    
-    // ゲーム初期化
     isGameOver = false;
     
-    // BGMを4秒目から再生開始（ユーザーのクリックイベント内なので再生が許可される）
+    // BGMを4秒目から再生
     player.seekTo(4, true);
     player.playVideo();
 
-    // ※ここにゲームのメインループ（敵を動かすなど）の開始処理を書く
+    // ゲームループ開始
+    requestAnimationFrame(gameLoop);
 });
 
-// 敵に触れた（ゲームオーバー）時の処理
+// ゲームオーバー処理
 function onGameOver() {
-    if (isGameOver) return; // 二重実行を防止
+    if (isGameOver) return; 
     
     isGameOver = true;
-    
-    // 強制的に84秒（1分24秒）の位置に飛ばし、垂れ流す
-    player.seekTo(84, true);
-    
+    player.seekTo(84, true); // 例のシーンへ
     console.log("ゲームオーバー：84秒以降を再生中");
-
-    // ※ここにプレイヤーの動きを止める、泣き叫ぶ画像を表示するなどの演出を書く
 }
 
-// ==========================================
-// 3. ゲームのメインループ（モックアップ）
-// ==========================================
-// ※実際にはここにCanvasを使った当たり判定などを書いていきます
-
-/* // 当たり判定のイメージ
+// 毎フレーム実行されるメインループ
 function gameLoop() {
     if (!isGameOver) {
-        updatePlayerPosition();
-        updateEnemyPosition();
-        
-        if (checkCollision(player, enemy)) {
-            onGameOver(); // 当たったらBGMを飛ばす
-        }
+        update(); // 座標の更新
     }
+    draw();       // 画面の描画
     requestAnimationFrame(gameLoop);
 }
-*/
+
+// キャラクターの移動・状態更新処理
+function update() {
+    playerObj.isMoving = false; // 一旦停止状態にする
+
+    // 右移動
+    if (keys['ArrowRight']) {
+        playerObj.x += playerObj.speed;
+        playerObj.isMoving = true;
+        playerObj.facingRight = true; // 右向きとして記憶
+    }
+    // 左移動
+    if (keys['ArrowLeft']) {
+        playerObj.x -= playerObj.speed;
+        playerObj.isMoving = true;
+        playerObj.facingRight = false; // 左向きとして記憶
+    }
+
+    // 画面外に出ないようにする制限（必要に応じて）
+    if (playerObj.x < 0) playerObj.x = 0;
+    if (playerObj.x + playerObj.width > canvas.width) playerObj.x = canvas.width - playerObj.width;
+
+    // ※ここに敵との当たり判定（checkCollisionなど）を追加し、当たったら onGameOver() を呼ぶ
+    // 開発テスト用：スペースキーを押すと強制ゲームオーバー
+    if (keys['Space']) {
+        onGameOver();
+    }
+}
+
+// 描画処理
+function draw() {
+    // 画面を一度クリア（背景色で塗りつぶすなどでも可）
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // 状態に合わせて使う画像を決定
+    const currentImg = playerObj.isMoving ? imgMove : imgStop;
+
+    // 画像がまだ読み込まれていなければ描画をスキップ
+    if (!currentImg.complete) return;
+
+    ctx.save(); // 現在の描画設定を保存
+
+    if (playerObj.facingRight) {
+        // 右向き（デフォルト）の場合はそのまま描画
+        ctx.drawImage(currentImg, playerObj.x, playerObj.y, playerObj.width, playerObj.height);
+    } else {
+        // 左向きの場合はキャンバスを反転させて描画
+        ctx.scale(-1, 1);
+        // 座標も反転するため、X座標をマイナスにして画像幅分ズラす必要がある
+        ctx.drawImage(currentImg, -playerObj.x - playerObj.width, playerObj.y, playerObj.width, playerObj.height);
+    }
+
+    ctx.restore(); // 保存した描画設定に戻す（これをしないと背景なども反転し続ける）
+}

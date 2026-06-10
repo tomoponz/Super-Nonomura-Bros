@@ -172,6 +172,7 @@ const JUMP_SPEED = -15.9;
 const COYOTE_FRAMES = 7;
 const JUMP_BUFFER_FRAMES = 8;
 const BLOCK_BUMP_FRAMES = 12;
+const HIDDEN_BLOCK_REBOUND = 8.4;
 
 const keys = new Set();
 const touch = { left: false, right: false, jump: false };
@@ -263,17 +264,23 @@ const blocks = [
     block(19, 4, 'brick'),
     block(17, 8, 'brick'),
 
+    // 穴の直前でジャンプすると頭をぶつける隠しブロック。
+    // 最初は見えず、下から叩いた瞬間だけ出現して下へ跳ね返します。
+    block(24, 3, 'hidden'),
+
     ...blockLine(31, 4, 2, 'brick'),
     block(33, 4, 'question'),
     block(34, 4, 'brick'),
     block(38, 5, 'question'),
     ...blockLine(40, 5, 4, 'brick'),
     block(45, 7, 'question'),
+    block(53, 3, 'hidden'),
 
     ...blockLine(60, 4, 4, 'brick'),
     block(64, 4, 'question'),
     ...blockLine(68, 6, 5, 'brick'),
     block(73, 6, 'question'),
+    block(79, 3, 'hidden'),
 
     block(88, 5, 'question'),
     ...blockLine(103, 7, 3, 'brick'),
@@ -329,6 +336,7 @@ function block(tx, heightFromFloor, kind = 'brick') {
         kind,
         broken: false,
         used: false,
+        revealed: kind !== 'hidden',
         bump: 0,
     };
 }
@@ -436,6 +444,7 @@ function resetGame() {
     for (const block of blocks) {
         block.broken = false;
         block.used = false;
+        block.revealed = block.kind !== 'hidden';
         block.bump = 0;
     }
     moneyItems.length = 0;
@@ -489,19 +498,27 @@ function startGame() {
     gameStarted = true;
     startScreen.classList.add('hidden');
     resultScreen.classList.add('hidden');
-    resultScreen.classList.remove('result-win', 'result-lose');
+    resultScreen.classList.remove('result-win', 'result-lose', 'result-press', 'result-press-lose');
     if (resultVisual) resultVisual.style.backgroundImage = 'none';
     lastTime = performance.now();
     startBgm();
     requestAnimationFrame(gameLoop);
 }
 
-function endGame(title, message, isClear) {
+function endGame(title, message, isClear, resultMode = null) {
     gameEnded = true;
-    resultKicker.textContent = isClear ? 'COURSE CLEAR' : 'GAME OVER';
+
+    if (resultMode === 'press') {
+        resultKicker.textContent = 'PRESS CONFERENCE';
+    } else if (resultMode === 'press-lose') {
+        resultKicker.textContent = 'PRESS CONFERENCE / GAME OVER';
+    } else {
+        resultKicker.textContent = isClear ? 'COURSE CLEAR' : 'GAME OVER';
+    }
+
     resultTitle.textContent = title;
     resultMessage.textContent = message;
-    setupResultVisual(isClear);
+    setupResultVisual(isClear, resultMode);
     resultScreen.classList.remove('hidden');
 
     if (isClear) stopBgm();
@@ -517,7 +534,7 @@ function gameLoop(now) {
     if (!gameEnded) update(dt);
     draw();
 
-    if (!gameEnded) requestAnimationFrame(gameLoop);
+    if (!gameEnded || shouldAnimateEndedScene()) requestAnimationFrame(gameLoop);
 }
 
 function update(dt) {
@@ -739,6 +756,28 @@ function checkGoal() {
     }
 }
 
+function finishGoalResult() {
+    const coinCount = state.coins;
+    const amountManYen = coinCount * 10;
+
+    if (amountManYen <= 100) {
+        const message = coinCount === 0
+            ? '支出ゼロ！清廉潔白な議員活動です！'
+            : `不自然な支出：約${amountManYen}万円\n『記憶にございません』でギリギリ乗り切れそうです。`;
+        endGame('CLEAR!', message, true, 'win');
+        return;
+    }
+
+    if (amountManYen < 300) {
+        const message = `不自然な支出：約${amountManYen}万円\nかなり厳しい追及が待っていますね…。`;
+        endGame('記者会見スタート', message, true, 'press');
+        return;
+    }
+
+    const message = `不自然な支出：約${amountManYen}万円\nこれはもう、泣き乱れるしかありません！\n300万円以上なので、通常のGAME OVER演出も発動します。`;
+    endGame('記者会見スタート', message, false, 'press-lose');
+}
+
 function startGoalSequence() {
     if (goalSequence) return;
     goalSequence = { phase: 'slide', timer: 0 };
@@ -776,7 +815,7 @@ function updateGoalSequence(dt) {
         hero.vx = 0;
         hero.y = FLOOR_Y - hero.h;
         if (goalSequence.timer > 26) {
-            endGame('CLEAR!', `ゴールしました。コイン ${state.coins} 枚獲得。`, true);
+            finishGoalResult();
         }
     }
 
@@ -812,6 +851,90 @@ function draw() {
     drawBlockParticles();
     drawEnemies();
     drawHero();
+    ctx.restore();
+
+    if (isPressConferenceResult()) {
+        drawPressConferenceOverlay();
+    }
+}
+
+function isPressConferenceResult() {
+    return gameEnded && resultTitle && resultTitle.textContent === '記者会見スタート';
+}
+
+function shouldAnimateEndedScene() {
+    return isPressConferenceResult();
+}
+
+function drawPressConferenceOverlay() {
+    ctx.save();
+
+    // 記者会見場の暗幕。リザルトパネルの背後でも分かる程度に薄く敷く。
+    ctx.fillStyle = 'rgba(18, 18, 26, 0.18)';
+    ctx.fillRect(0, 0, W, H);
+
+    // 下部の白い会見テーブル
+    const tableH = 88;
+    const tableY = H - tableH;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.fillRect(0, tableY, W, tableH);
+    ctx.fillStyle = 'rgba(210, 210, 210, 0.96)';
+    ctx.fillRect(0, tableY, W, 6);
+    ctx.fillStyle = 'rgba(245, 245, 245, 0.95)';
+    for (let x = 0; x < W; x += 86) {
+        ctx.fillRect(x + 18, tableY + 20, 50, 6);
+    }
+
+    // 複数本のマイク
+    const micBaseY = tableY + 18;
+    const micPositions = [
+        W / 2 - 170,
+        W / 2 - 104,
+        W / 2 - 42,
+        W / 2 + 24,
+        W / 2 + 92,
+        W / 2 + 158
+    ];
+
+    for (const x of micPositions) {
+        ctx.strokeStyle = '#222';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(x, tableY + 72);
+        ctx.lineTo(x + 12, micBaseY + 22);
+        ctx.stroke();
+
+        ctx.fillStyle = '#111';
+        ctx.beginPath();
+        ctx.ellipse(x + 16, micBaseY + 12, 19, 9, -0.35, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#d8d8d8';
+        ctx.beginPath();
+        ctx.ellipse(x + 20, micBaseY + 9, 7, 4, -0.35, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#333';
+        ctx.fillRect(x - 18, tableY + 69, 48, 8);
+    }
+
+    ctx.fillStyle = '#e60012';
+    ctx.beginPath();
+    ctx.arc(W / 2 + 224, tableY + 34, 9, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#222';
+    ctx.font = 'bold 18px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText('記者会見中', W / 2 + 224, tableY + 66);
+
+    // 記者のカメラフラッシュ。動く演出なので gameEnded 後も描画ループを継続します。
+    if (Math.random() < 0.3) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.58)';
+        ctx.fillRect(0, 0, W, H);
+    }
+
     ctx.restore();
 }
 
@@ -921,8 +1044,11 @@ function drawGroundTile(x, y, isTop) {
 function drawBlocks() {
     for (const block of blocks) {
         if (block.broken || !isVisible(block.x, block.w)) continue;
+        if (block.kind === 'hidden' && !block.revealed && !block.bump) continue;
+
         const y = getBlockDrawY(block);
-        if (block.kind === 'question' && !block.used) drawQuestionBlock(block.x, y);
+        if (block.kind === 'hidden') drawHiddenBlock(block.x, y);
+        else if (block.kind === 'question' && !block.used) drawQuestionBlock(block.x, y);
         else if (block.kind === 'question' && block.used) drawUsedQuestionBlock(block.x, y);
         else drawBrickBlock(block.x, y);
     }
@@ -999,6 +1125,21 @@ function drawUsedQuestionBlock(x, y) {
     px(x + TILE - 2, y, 2, TILE);
     ctx.fillStyle = 'rgba(255,255,255,0.24)';
     px(x + 11, y + 11, 10, 10);
+}
+
+function drawHiddenBlock(x, y) {
+    ctx.fillStyle = '#d8d8d8';
+    px(x, y, TILE, TILE);
+    ctx.fillStyle = '#ffffff';
+    px(x + 3, y + 3, TILE - 6, 6);
+    ctx.fillStyle = '#7a7a7a';
+    px(x, y, TILE, 2);
+    px(x, y + TILE - 2, TILE, 2);
+    px(x, y, 2, TILE);
+    px(x + TILE - 2, y, 2, TILE);
+    ctx.fillStyle = '#9a9a9a';
+    px(x + 8, y + 13, TILE - 16, 5);
+    px(x + 8, y + 22, TILE - 16, 4);
 }
 
 function drawPipe(p) {
@@ -1200,11 +1341,22 @@ function drawImageContain(img, x, y, w, h, smoothImage = true) {
     ctx.imageSmoothingEnabled = true;
 }
 
-function setupResultVisual(isClear) {
+function setupResultVisual(isClear, resultMode = null) {
     if (!resultVisual) return;
 
-    resultScreen.classList.remove('result-win', 'result-lose');
+    resultScreen.classList.remove('result-win', 'result-lose', 'result-press', 'result-press-lose');
     resultVisual.style.backgroundImage = 'none';
+
+    if (resultMode === 'press') {
+        resultScreen.classList.add('result-press');
+        return;
+    }
+
+    if (resultMode === 'press-lose') {
+        resultScreen.classList.add('result-press', 'result-press-lose', 'result-lose');
+        setResultBackground(imgLose, imgLose.src || 'assets/images/player/lose.jpg');
+        return;
+    }
 
     if (isClear) {
         resultScreen.classList.add('result-win');
@@ -1272,6 +1424,13 @@ function getBlockHitbox(block) {
 
 function hitBlockFromBelow(block) {
     if (!block || block.broken) return;
+
+    if (block.kind === 'hidden') {
+        block.revealed = true;
+        block.bump = BLOCK_BUMP_FRAMES;
+        hero.vy = HIDDEN_BLOCK_REBOUND;
+        return;
+    }
 
     if (block.kind === 'brick') {
         block.broken = true;

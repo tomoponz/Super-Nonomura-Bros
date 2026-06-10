@@ -133,6 +133,83 @@ function stopBgm() {
     player.pauseVideo();
 }
 
+function unlockPressConferenceAudio() {
+    // スマホブラウザでは、ゲーム開始タップの文脈で一度だけAudioを触っておくと、
+    // ゴール後のローカルMP3再生がブロックされにくくなります。
+    if (!pressConferenceAudio || pressConferenceAudioUnlocked) return;
+
+    try {
+        pressConferenceAudio.muted = true;
+        pressConferenceAudio.currentTime = 0;
+        const promise = pressConferenceAudio.play();
+        if (promise && typeof promise.then === 'function') {
+            promise.then(() => {
+                pressConferenceAudio.pause();
+                pressConferenceAudio.currentTime = 0;
+                pressConferenceAudio.muted = false;
+                pressConferenceAudioUnlocked = true;
+            }).catch(() => {
+                pressConferenceAudio.muted = false;
+            });
+        } else {
+            pressConferenceAudio.pause();
+            pressConferenceAudio.currentTime = 0;
+            pressConferenceAudio.muted = false;
+            pressConferenceAudioUnlocked = true;
+        }
+    } catch (error) {
+        pressConferenceAudio.muted = false;
+        console.warn('記者会見BGMの事前準備に失敗しました', error);
+    }
+}
+
+function playPressConferenceAudio() {
+    stopBgm();
+    if (!pressConferenceAudio) return;
+
+    try {
+        pressConferenceAudio.pause();
+        pressConferenceAudio.currentTime = 0;
+        pressConferenceAudio.muted = false;
+        pressConferenceAudio.volume = 0.9;
+        const promise = pressConferenceAudio.play();
+        if (promise && typeof promise.catch === 'function') {
+            promise.catch((error) => {
+                console.warn('記者会見BGMの再生がブラウザにブロックされました', error);
+            });
+        }
+    } catch (error) {
+        console.warn('記者会見BGMの再生に失敗しました', error);
+    }
+}
+
+function stopPressConferenceAudio() {
+    if (!pressConferenceAudio) return;
+    try {
+        pressConferenceAudio.pause();
+        pressConferenceAudio.currentTime = 0;
+    } catch (error) {
+        console.warn('記者会見BGMの停止に失敗しました', error);
+    }
+}
+
+function resumePressConferenceAudioFromUserGesture() {
+    if (!isPressConferenceResult() || !pressConferenceAudio || !pressConferenceAudio.paused) return;
+
+    try {
+        pressConferenceAudio.muted = false;
+        pressConferenceAudio.volume = 0.9;
+        const promise = pressConferenceAudio.play();
+        if (promise && typeof promise.catch === 'function') {
+            promise.catch((error) => {
+                console.warn('記者会見BGMの再試行がブロックされました', error);
+            });
+        }
+    } catch (error) {
+        console.warn('記者会見BGMの再試行に失敗しました', error);
+    }
+}
+
 // ==========================================
 // 2. ゲームの描画・キャラクター制御セットアップ
 // ==========================================
@@ -208,8 +285,16 @@ loadImageWithFallback(imgLose, [
     'assets/images/player/lose.jpg'
 ]);
 
+const PRESS_CONFERENCE_AUDIO_SRC = 'assets/audio/kisyakaiken.mp3';
+const pressConferenceAudio = new Audio(PRESS_CONFERENCE_AUDIO_SRC);
+pressConferenceAudio.preload = 'auto';
+pressConferenceAudio.loop = true;
+pressConferenceAudio.volume = 0.9;
+let pressConferenceAudioUnlocked = false;
+
 const state = {
     coins: 0,
+    moneyManYen: 0,
     lives: 1,
     time: 300,
     elapsed: 0,
@@ -432,6 +517,7 @@ function hideDeprecatedPlayerPicker() {
 
 function resetGame() {
     state.coins = 0;
+    state.moneyManYen = 0;
     state.lives = 1;
     state.time = 300;
     state.elapsed = 0;
@@ -500,6 +586,8 @@ function startGame() {
     resultScreen.classList.add('hidden');
     resultScreen.classList.remove('result-win', 'result-lose', 'result-press', 'result-press-lose');
     if (resultVisual) resultVisual.style.backgroundImage = 'none';
+    stopPressConferenceAudio();
+    unlockPressConferenceAudio();
     lastTime = performance.now();
     startBgm();
     requestAnimationFrame(gameLoop);
@@ -521,8 +609,16 @@ function endGame(title, message, isClear, resultMode = null) {
     setupResultVisual(isClear, resultMode);
     resultScreen.classList.remove('hidden');
 
-    if (isClear) stopBgm();
-    else playGameOverBgm();
+    if (resultMode === 'press' || resultMode === 'press-lose') {
+        // ゴール後は通常BGMを止め、記者会見用のローカルMP3に切り替える。
+        playPressConferenceAudio();
+    } else if (isClear) {
+        stopBgm();
+        stopPressConferenceAudio();
+    } else {
+        stopPressConferenceAudio();
+        playGameOverBgm();
+    }
 }
 
 function gameLoop(now) {
@@ -691,14 +787,29 @@ function updateBlocks(dt) {
 
 function updateMoneyItems(dt) {
     for (const item of moneyItems) {
+        if (item.taken) continue;
+
         item.life -= dt;
+        if (item.collectDelay > 0) item.collectDelay = Math.max(0, item.collectDelay - dt);
+
         item.y += item.vy * dt;
-        item.vy += 0.16 * dt;
+        item.vy += 0.12 * dt;
         item.scale = Math.min(1, item.scale + 0.05 * dt);
+
+        const groundY = FLOOR_Y - 38;
+        if (item.y > groundY) {
+            item.y = groundY;
+            item.vy = 0;
+        }
+
+        if (item.collectDelay <= 0 && rectsOverlap(hero, getMoneyItemHitbox(item))) {
+            item.taken = true;
+            state.moneyManYen += item.valueManYen || 300;
+        }
     }
 
     for (let i = moneyItems.length - 1; i >= 0; i--) {
-        if (moneyItems[i].life <= 0) moneyItems.splice(i, 1);
+        if (moneyItems[i].life <= 0 || moneyItems[i].taken) moneyItems.splice(i, 1);
     }
 }
 
@@ -723,6 +834,7 @@ function collectCoins() {
         if (rectsOverlap(hero, coinBox)) {
             coin.taken = true;
             state.coins += 1;
+            state.moneyManYen += 1;
         }
     }
 }
@@ -758,23 +870,24 @@ function checkGoal() {
 
 function finishGoalResult() {
     const coinCount = state.coins;
-    const amountManYen = coinCount * 5;
+    const amountManYen = state.moneyManYen;
+    const displayAmount = Math.max(0, amountManYen);
 
     if (amountManYen <= 100) {
-        const message = coinCount === 0
+        const message = amountManYen <= 0
             ? '支出ゼロ！清廉潔白な議員活動です！'
-            : `不自然な支出：約${amountManYen}万円\n『記憶にございません』でギリギリ乗り切れそうです。`;
+            : `不自然な支出：約${displayAmount}万円\nコイン${coinCount}枚ぶんを含む支出ですが、まだwin.png演出で済みそうです。`;
         endGame('CLEAR!', message, true, 'win');
         return;
     }
 
     if (amountManYen < 300) {
-        const message = `不自然な支出：約${amountManYen}万円\nかなり厳しい追及が待っていますね…。`;
+        const message = `不自然な支出：約${displayAmount}万円\nかなり厳しい追及が待っていますね…。`;
         endGame('記者会見スタート', message, true, 'press');
         return;
     }
 
-    const message = `不自然な支出：約${amountManYen}万円\nこれはもう、泣き乱れるしかありません！\n300万円以上なので、通常のGAME OVER演出も発動します。`;
+    const message = `不自然な支出：約${displayAmount}万円\nこれはもう、泣き乱れるしかありません！\n300万円以上なので、記者会見に加えて通常のGAME OVER演出も発動します。`;
     endGame('記者会見スタート', message, false, 'press-lose');
 }
 
@@ -869,71 +982,211 @@ function shouldAnimateEndedScene() {
 function drawPressConferenceOverlay() {
     ctx.save();
 
-    // 記者会見場の暗幕。リザルトパネルの背後でも分かる程度に薄く敷く。
-    ctx.fillStyle = 'rgba(18, 18, 26, 0.18)';
+    // 記者会見場の暗幕と背面パネル
+    ctx.fillStyle = 'rgba(14, 16, 24, 0.22)';
     ctx.fillRect(0, 0, W, H);
 
-    // 下部の白い会見テーブル
-    const tableH = 88;
-    const tableY = H - tableH;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-    ctx.fillRect(0, tableY, W, tableH);
-    ctx.fillStyle = 'rgba(210, 210, 210, 0.96)';
-    ctx.fillRect(0, tableY, W, 6);
-    ctx.fillStyle = 'rgba(245, 245, 245, 0.95)';
-    for (let x = 0; x < W; x += 86) {
-        ctx.fillRect(x + 18, tableY + 20, 50, 6);
-    }
+    const panelW = Math.min(W * 0.78, 760);
+    const panelX = (W - panelW) / 2;
+    const panelY = Math.max(26, H - 252);
+    const panelH = 112;
 
-    // 複数本のマイク
-    const micBaseY = tableY + 18;
-    const micPositions = [
-        W / 2 - 170,
-        W / 2 - 104,
-        W / 2 - 42,
-        W / 2 + 24,
-        W / 2 + 92,
-        W / 2 + 158
-    ];
-
-    for (const x of micPositions) {
-        ctx.strokeStyle = '#222';
-        ctx.lineWidth = 5;
-        ctx.beginPath();
-        ctx.moveTo(x, tableY + 72);
-        ctx.lineTo(x + 12, micBaseY + 22);
-        ctx.stroke();
-
-        ctx.fillStyle = '#111';
-        ctx.beginPath();
-        ctx.ellipse(x + 16, micBaseY + 12, 19, 9, -0.35, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = '#d8d8d8';
-        ctx.beginPath();
-        ctx.ellipse(x + 20, micBaseY + 9, 7, 4, -0.35, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = '#333';
-        ctx.fillRect(x - 18, tableY + 69, 48, 8);
-    }
-
-    ctx.fillStyle = '#e60012';
-    ctx.beginPath();
-    ctx.arc(W / 2 + 224, tableY + 34, 9, 0, Math.PI * 2);
+    const backdrop = ctx.createLinearGradient(panelX, panelY, panelX, panelY + panelH);
+    backdrop.addColorStop(0, 'rgba(245, 247, 252, 0.92)');
+    backdrop.addColorStop(1, 'rgba(214, 220, 232, 0.92)');
+    ctx.fillStyle = backdrop;
+    roundRect(panelX, panelY, panelW, panelH, 12);
     ctx.fill();
 
-    ctx.fillStyle = '#222';
-    ctx.font = 'bold 18px sans-serif';
+    ctx.strokeStyle = 'rgba(80, 90, 115, 0.35)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(70, 80, 105, 0.16)';
+    for (let x = panelX + 22; x < panelX + panelW - 20; x += 92) {
+        roundRect(x, panelY + 20, 64, 18, 5);
+        ctx.fill();
+        roundRect(x + 10, panelY + 60, 48, 12, 4);
+        ctx.fill();
+    }
+
+    // 下部の会見テーブル。布、影、天板、ネームプレートを分けて描く。
+    const tableH = 110;
+    const tableY = H - tableH;
+    const tableGrad = ctx.createLinearGradient(0, tableY, 0, H);
+    tableGrad.addColorStop(0, '#ffffff');
+    tableGrad.addColorStop(0.32, '#f3f4f7');
+    tableGrad.addColorStop(1, '#d9dde6');
+    ctx.fillStyle = tableGrad;
+    ctx.fillRect(0, tableY, W, tableH);
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.16)';
+    ctx.fillRect(0, tableY - 7, W, 7);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, tableY, W, 9);
+    ctx.fillStyle = '#c8ceda';
+    ctx.fillRect(0, tableY + 9, W, 3);
+
+    // テーブルの布の縦じわ
+    for (let x = 18; x < W; x += 74) {
+        ctx.fillStyle = 'rgba(170, 176, 190, 0.28)';
+        ctx.fillRect(x, tableY + 22, 2, tableH - 30);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.52)';
+        ctx.fillRect(x + 3, tableY + 22, 2, tableH - 30);
+    }
+
+    // 中央のネームプレート
+    const plateW = 210;
+    const plateX = W / 2 - plateW / 2;
+    ctx.fillStyle = '#f7f1d3';
+    roundRect(plateX, tableY + 46, plateW, 34, 6);
+    ctx.fill();
+    ctx.strokeStyle = '#b49b57';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = '#2b2b2b';
+    ctx.font = 'bold 17px system-ui, sans-serif';
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText('記者会見中', W / 2 + 224, tableY + 66);
+    ctx.textBaseline = 'middle';
+    ctx.fillText('記者会見中', W / 2, tableY + 63);
+
+    // マイク群。角度、台座、ケーブル、ラベルをつけて少し丁寧に見せる。
+    const micBaseY = tableY + 22;
+    const micPositions = [
+        { x: W / 2 - 190, angle: -0.42, label: 'TV' },
+        { x: W / 2 - 124, angle: -0.26, label: 'NEWS' },
+        { x: W / 2 - 58, angle: -0.12, label: 'PRESS' },
+        { x: W / 2 + 18, angle: 0.12, label: 'LIVE' },
+        { x: W / 2 + 92, angle: 0.28, label: 'WEB' },
+        { x: W / 2 + 164, angle: 0.44, label: 'REC' }
+    ];
+
+    for (const mic of micPositions) {
+        drawConferenceMic(mic.x, micBaseY, mic.angle, mic.label);
+    }
+
+    // 録音ランプと小型カメラ
+    ctx.fillStyle = '#2f3542';
+    roundRect(W / 2 + 230, tableY + 31, 66, 38, 7);
+    ctx.fill();
+    ctx.fillStyle = '#111827';
+    roundRect(W / 2 + 294, tableY + 39, 20, 20, 4);
+    ctx.fill();
+    ctx.fillStyle = '#ef233c';
+    ctx.beginPath();
+    ctx.arc(W / 2 + 246, tableY + 44, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 11px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('REC', W / 2 + 258, tableY + 48);
+
+    // 記者席のカメラ・フラッシュの雰囲気
+    drawReporterCamera(54, tableY - 18, -0.08);
+    drawReporterCamera(W - 92, tableY - 22, 0.08);
 
     // 記者のカメラフラッシュ。動く演出なので gameEnded 後も描画ループを継続します。
     if (Math.random() < 0.3) {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.58)';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.56)';
         ctx.fillRect(0, 0, W, H);
     }
+
+    ctx.restore();
+}
+
+function drawConferenceMic(x, y, angle, label) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+
+    // ケーブル
+    ctx.strokeStyle = 'rgba(20, 20, 25, 0.55)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-4, 54);
+    ctx.quadraticCurveTo(-28, 72, -6, 88);
+    ctx.stroke();
+
+    // スタンド
+    ctx.strokeStyle = '#20242c';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(0, 58);
+    ctx.lineTo(20, 16);
+    ctx.stroke();
+
+    ctx.strokeStyle = '#727986';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(3, 56);
+    ctx.lineTo(22, 18);
+    ctx.stroke();
+
+    // 台座
+    ctx.fillStyle = '#252a34';
+    roundRect(-24, 55, 58, 12, 5);
+    ctx.fill();
+    ctx.fillStyle = '#4b5563';
+    roundRect(-15, 52, 38, 6, 3);
+    ctx.fill();
+
+    // 局名ラベル
+    ctx.fillStyle = '#f8fafc';
+    roundRect(1, 24, 34, 21, 5);
+    ctx.fill();
+    ctx.strokeStyle = '#475569';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.fillStyle = '#111827';
+    ctx.font = 'bold 8px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, 18, 35);
+
+    // マイク本体
+    const micGrad = ctx.createLinearGradient(18, 0, 52, 20);
+    micGrad.addColorStop(0, '#111827');
+    micGrad.addColorStop(0.55, '#2f3542');
+    micGrad.addColorStop(1, '#0b0f19');
+    ctx.fillStyle = micGrad;
+    ctx.beginPath();
+    ctx.ellipse(42, 8, 25, 11, 0.08, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.38)';
+    ctx.beginPath();
+    ctx.ellipse(34, 3, 8, 3, 0.08, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+function drawReporterCamera(x, y, tilt) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(tilt);
+
+    ctx.fillStyle = 'rgba(20, 24, 32, 0.86)';
+    roundRect(0, 0, 62, 36, 8);
+    ctx.fill();
+    ctx.fillStyle = '#111827';
+    roundRect(44, 9, 22, 18, 5);
+    ctx.fill();
+    ctx.fillStyle = '#94a3b8';
+    ctx.beginPath();
+    ctx.arc(24, 18, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#1e293b';
+    ctx.beginPath();
+    ctx.arc(24, 18, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
+    ctx.beginPath();
+    ctx.moveTo(38, -8);
+    ctx.lineTo(66, -24);
+    ctx.lineTo(58, -2);
+    ctx.closePath();
+    ctx.fill();
 
     ctx.restore();
 }
@@ -1228,6 +1481,7 @@ function drawSmoothCoin(x, y, r) {
 
 function drawMoneyItems() {
     for (const item of moneyItems) {
+        if (item.taken) continue;
         const w = 92 * item.scale;
         const h = 62 * item.scale;
         const x = item.x - w / 2;
@@ -1245,6 +1499,17 @@ function drawMoneyItems() {
             ctx.fillText('¥', item.x, item.y);
         }
     }
+}
+
+function getMoneyItemHitbox(item) {
+    const w = 92 * Math.max(0.45, item.scale || 1);
+    const h = 62 * Math.max(0.45, item.scale || 1);
+    return {
+        x: item.x - w / 2,
+        y: item.y - h / 2,
+        w,
+        h
+    };
 }
 
 function drawBlockParticles() {
@@ -1435,7 +1700,7 @@ function hitBlockFromBelow(block) {
     if (block.kind === 'brick') {
         block.broken = true;
         spawnBrickParticles(block);
-        state.coins += 1;
+        state.moneyManYen -= 10;
         return;
     }
 
@@ -1444,7 +1709,6 @@ function hitBlockFromBelow(block) {
         if (!block.used) {
             block.used = true;
             spawnOkaneFromBlock(block);
-            state.coins += 10;
         }
     }
 }
@@ -1454,8 +1718,11 @@ function spawnOkaneFromBlock(block) {
         x: block.x + TILE / 2,
         y: block.y - 8,
         vy: -5.8,
-        life: 86,
+        life: 540,
         scale: 0.22,
+        collectDelay: 10,
+        valueManYen: 300,
+        taken: false,
     });
 }
 
@@ -1555,6 +1822,7 @@ function setupLineBrowserGuard() {
     if (!browserRedirectScreen || !isLineInAppBrowser()) return;
     browserRedirectScreen.classList.remove('hidden');
     stopBgm();
+    stopPressConferenceAudio();
 }
 
 window.addEventListener('keydown', (e) => {
@@ -1593,6 +1861,8 @@ for (const button of document.querySelectorAll('.touch-button')) {
 
 document.addEventListener('pointerdown', resumeBgmFromUserGesture, { passive: true });
 document.addEventListener('touchend', resumeBgmFromUserGesture, { passive: true });
+document.addEventListener('pointerdown', resumePressConferenceAudioFromUserGesture, { passive: true });
+document.addEventListener('touchend', resumePressConferenceAudioFromUserGesture, { passive: true });
 
 if (openBrowserButton) openBrowserButton.addEventListener('click', openExternalBrowser);
 

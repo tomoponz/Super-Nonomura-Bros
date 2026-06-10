@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#74b9ff" />
-    <title>Super Nonomura Bros - Original Side Scroller</title>
+    <title>スーパー野々村ブラザーズ</title>
     <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -22,7 +22,7 @@
             <div id="start-screen" class="overlay">
                 <div class="panel">
                     <p class="kicker">Original horizontal scroll course</p>
-                    <h1>Super Nonomura Bros</h1>
+                    <h1>スーパー野々村ブラザーズ</h1>
                     <p>
                         スマホでは左下の左右ボタン、右下のジャンプボタンで操作できます。<br />
                         PCでは ← → / A D で移動、↑ / W / Space でジャンプです。
@@ -32,7 +32,10 @@
                         <input id="player-image-input" type="file" accept="image/*" />
                     </label>
                     <button id="start-button" type="button">ゲームスタート</button>
-                    <p class="small-note">画像はあとからでも <code>assets/images/player/player_icon.png</code> を置けば差し替えできます。</p>
+                    <p class="small-note">
+                        画像は <code>assets/images/player/player_icon.png</code> を置くと固定差し替えできます。<br />
+                        敵画像は <code>assets/images/player/enemy.png</code> を使います。
+                    </p>
                 </div>
             </div>
 
@@ -56,10 +59,16 @@
 
         <section id="help-card">
             <h2>GitHub Pages 用メモ</h2>
-            <p>このフォルダをそのままGitHubに置き、Pagesを有効化すればブラウザで遊べます。画像を決めたら <code>assets/images/player/player_icon.png</code> として追加してください。</p>
+            <p>
+                このフォルダをそのままGitHubに置き、Pagesを有効化すればブラウザで遊べます。
+                BGMは元のYouTube IFrame API方式を残しています。
+            </p>
         </section>
     </main>
 
+    <!-- 元のコードで動いていたYouTube BGM用。画面には表示しません。 -->
+    <div id="youtube-player" aria-hidden="true"></div>
+    <script src="https://www.youtube.com/iframe_api"></script>
     <script src="script.js"></script>
 </body>
 </html>

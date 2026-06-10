@@ -1,8 +1,6 @@
 :root {
     --sky-top: #70c5ff;
     --sky-bottom: #b9edff;
-    --ground: #8c5a2b;
-    --ground-dark: #5c3516;
     --panel: rgba(18, 24, 38, 0.88);
     --text: #f8fbff;
     --accent: #ffd166;
@@ -52,6 +50,8 @@ canvas {
     display: block;
     width: 100%;
     height: 100%;
+    background: linear-gradient(var(--sky-top), var(--sky-bottom));
+    image-rendering: auto;
 }
 
 #hud {
@@ -228,6 +228,38 @@ button,
     line-height: 1.7;
 }
 
+/* YouTubeプレイヤーは完全に隠す。元のBGM API用なので消さない。 */
+#youtube-player {
+    position: fixed;
+    width: 0;
+    height: 0;
+    left: -9999px;
+    top: -9999px;
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+}
+
+@media (max-width: 720px) {
+    body {
+        padding-left: 6px;
+        padding-right: 6px;
+    }
+
+    #hud {
+        font-size: 12px;
+        gap: 6px;
+    }
+
+    #hud-title {
+        display: none;
+    }
+
+    .panel {
+        width: min(96%, 540px);
+    }
+}
+
 @media (hover: hover) and (pointer: fine) {
     #touch-controls {
         opacity: 0.35;
@@ -235,33 +267,5 @@ button,
 
     #game-container:hover #touch-controls {
         opacity: 1;
-    }
-}
-
-@media (max-width: 720px) {
-    body {
-        padding-left: 0;
-        padding-right: 0;
-        background: #101827;
-    }
-
-    #game-container {
-        margin-top: 0;
-        border-radius: 0;
-        min-height: min(100svh, 620px);
-        aspect-ratio: auto;
-    }
-
-    #hud {
-        font-size: 13px;
-        flex-wrap: wrap;
-    }
-
-    #hud-title {
-        width: 100%;
-    }
-
-    #help-card {
-        margin: 10px 10px 0;
     }
 }

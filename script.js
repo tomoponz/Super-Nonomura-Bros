@@ -1,13 +1,82 @@
 'use strict';
 
-// =============================================================
-// Super Nonomura Bros - Original side-scrolling course
-// -------------------------------------------------------------
-// This is an original browser game course designed for GitHub Pages.
-// Replace assets/images/player/player_icon.png later to change the hero.
-// You can also select an image on the start screen while testing locally.
-// =============================================================
+// ==========================================
+// 1. YouTube API と BGM制御のセットアップ
+//    ここは「最初のコードで動いていた方式」を残しています。
+// ==========================================
+let player;
+let isGameOver = false;
+let loopCheckInterval;
+let ytReady = false;
 
+const VIDEO_ID = 'vHbkhn2AI8g';
+
+function onYouTubeIframeAPIReady() {
+    player = new YT.Player('youtube-player', {
+        height: '0',
+        width: '0',
+        videoId: VIDEO_ID,
+        playerVars: {
+            'playsinline': 1,
+            'controls': 0,
+            'disablekb': 1
+        },
+        events: {
+            'onReady': onPlayerReady,
+            'onStateChange': onPlayerStateChange
+        }
+    });
+}
+
+function onPlayerReady() {
+    ytReady = true;
+    console.log('BGMの準備が完了しました');
+}
+
+function onPlayerStateChange(event) {
+    if (event.data === YT.PlayerState.PLAYING) {
+        startLoopCheck();
+    } else {
+        clearInterval(loopCheckInterval);
+    }
+}
+
+function startLoopCheck() {
+    clearInterval(loopCheckInterval);
+    loopCheckInterval = setInterval(() => {
+        if (!player || typeof player.getCurrentTime !== 'function') return;
+
+        const currentTime = player.getCurrentTime();
+
+        // 通常時は4秒〜84秒をループ。元コードと同じ seekTo 方式です。
+        if (!isGameOver && currentTime >= 84) {
+            player.seekTo(4, true);
+        }
+    }, 100);
+}
+
+function startBgm() {
+    if (!ytReady || !player || typeof player.seekTo !== 'function') return;
+    isGameOver = false;
+    player.seekTo(4, true);
+    player.playVideo();
+}
+
+function playGameOverBgm() {
+    if (!ytReady || !player || typeof player.seekTo !== 'function') return;
+    isGameOver = true;
+    player.seekTo(84, true);
+    player.playVideo();
+}
+
+function stopBgm() {
+    if (!ytReady || !player || typeof player.pauseVideo !== 'function') return;
+    player.pauseVideo();
+}
+
+// ==========================================
+// 2. ゲームの描画・キャラクター制御セットアップ
+// ==========================================
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
@@ -23,8 +92,8 @@ const startButton = document.getElementById('start-button');
 const retryButton = document.getElementById('retry-button');
 const imageInput = document.getElementById('player-image-input');
 
-const W = canvas.width;
-const H = canvas.height;
+const W = 960;
+const H = 540;
 const WORLD_WIDTH = 6200;
 const FLOOR_Y = 470;
 
@@ -44,22 +113,27 @@ let gameStarted = false;
 let gameEnded = false;
 let lastTime = 0;
 let cameraX = 0;
+let dpr = 1;
 let selectedPlayerImage = null;
+let selectedObjectUrl = null;
 
-const fallbackStop = new Image();
-fallbackStop.src = 'assets/images/player/player_stop.png';
+const imgStop = new Image();
+imgStop.src = 'assets/images/player/player_stop.png';
 
-const fallbackMove = new Image();
-fallbackMove.src = 'assets/images/player/player_move.png';
+const imgMove = new Image();
+imgMove.src = 'assets/images/player/player_move.png';
 
-const customPlayerImage = new Image();
-customPlayerImage.src = 'assets/images/player/player_icon.png';
-customPlayerImage.onload = () => {
-    selectedPlayerImage = customPlayerImage;
+const imgPlayerIcon = new Image();
+imgPlayerIcon.onload = () => {
+    selectedPlayerImage = imgPlayerIcon;
 };
-customPlayerImage.onerror = () => {
+imgPlayerIcon.onerror = () => {
     selectedPlayerImage = null;
 };
+imgPlayerIcon.src = 'assets/images/player/player_icon.png';
+
+const imgEnemy = new Image();
+imgEnemy.src = 'assets/images/player/enemy.png';
 
 const state = {
     coins: 0,
@@ -69,7 +143,7 @@ const state = {
     checkpointX: 80,
 };
 
-const player = {
+const hero = {
     x: 80,
     y: 330,
     w: 58,
@@ -84,10 +158,8 @@ const player = {
     animation: 0,
 };
 
-// A long, original course.  It borrows the genre idea of a classic platformer,
-// but it is not a copy of any published level layout.
+// 1-1風ではなく、GitHub公開しやすいオリジナルの長い横スクロールコースです。
 const platforms = [
-    // ground islands
     { x: 0, y: FLOOR_Y, w: 760, h: 70, kind: 'ground' },
     { x: 850, y: FLOOR_Y, w: 820, h: 70, kind: 'ground' },
     { x: 1780, y: FLOOR_Y, w: 700, h: 70, kind: 'ground' },
@@ -95,7 +167,6 @@ const platforms = [
     { x: 3630, y: FLOOR_Y, w: 760, h: 70, kind: 'ground' },
     { x: 4510, y: FLOOR_Y, w: 1690, h: 70, kind: 'ground' },
 
-    // raised blocks / pipes / stairs
     { x: 410, y: 370, w: 110, h: 26, kind: 'brick' },
     { x: 560, y: 310, w: 150, h: 26, kind: 'brick' },
     { x: 980, y: 390, w: 150, h: 26, kind: 'brick' },
@@ -140,15 +211,15 @@ const enemies = [
     enemy(5200, 282, 5000, 5260, 1.25),
 ];
 
-const goal = {
-    x: 5930,
-    y: 190,
-    w: 26,
-    h: 280,
-};
+const goal = { x: 5930, y: 190, w: 26, h: 280 };
 
 function coinLine(startX, y, count) {
-    return Array.from({ length: count }, (_, i) => ({ x: startX + i * 46, y, r: 12, taken: false }));
+    return Array.from({ length: count }, (_, i) => ({
+        x: startX + i * 46,
+        y,
+        r: 12,
+        taken: false,
+    }));
 }
 
 function coinArc(startX, y, count) {
@@ -161,7 +232,28 @@ function coinArc(startX, y, count) {
 }
 
 function enemy(x, y, minX, maxX, speed) {
-    return { x, y, w: 46, h: 46, vx: speed, minX, maxX, alive: true, squish: 0 };
+    return { startX: x, x, y, w: 46, h: 46, vx: speed, startVx: speed, minX, maxX, alive: true, squish: 0 };
+}
+
+function resizeCanvasForHighDpi() {
+    dpr = Math.min(window.devicePixelRatio || 1, 3);
+    const targetW = Math.round(W * dpr);
+    const targetH = Math.round(H * dpr);
+
+    if (canvas.width !== targetW || canvas.height !== targetH) {
+        canvas.width = targetW;
+        canvas.height = targetH;
+    }
+
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    prepareCanvasContext();
+}
+
+function prepareCanvasContext() {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
 }
 
 function resetGame() {
@@ -170,24 +262,33 @@ function resetGame() {
     state.time = 300;
     state.elapsed = 0;
     state.checkpointX = 80;
-    player.x = 80;
-    player.y = 330;
-    player.vx = 0;
-    player.vy = 0;
-    player.grounded = false;
-    player.coyote = 0;
-    player.jumpBuffer = 0;
-    player.facing = 1;
-    player.invincible = 0;
-    player.animation = 0;
+
+    respawnHero(80, 330);
     cameraX = 0;
+
     for (const coin of coins) coin.taken = false;
     for (const foe of enemies) {
+        foe.x = foe.startX;
+        foe.vx = foe.startVx;
         foe.alive = true;
         foe.squish = 0;
     }
+
     gameEnded = false;
     updateHud();
+}
+
+function respawnHero(x, y) {
+    hero.x = x;
+    hero.y = y;
+    hero.vx = 0;
+    hero.vy = 0;
+    hero.grounded = false;
+    hero.coyote = 0;
+    hero.jumpBuffer = 0;
+    hero.facing = 1;
+    hero.invincible = 90;
+    hero.animation = 0;
 }
 
 function updateHud() {
@@ -209,11 +310,13 @@ function wantsJump() {
 }
 
 function startGame() {
+    resizeCanvasForHighDpi();
     resetGame();
     gameStarted = true;
     startScreen.classList.add('hidden');
     resultScreen.classList.add('hidden');
     lastTime = performance.now();
+    startBgm();
     requestAnimationFrame(gameLoop);
 }
 
@@ -223,31 +326,32 @@ function endGame(title, message, isClear) {
     resultTitle.textContent = title;
     resultMessage.textContent = message;
     resultScreen.classList.remove('hidden');
+
+    if (isClear) stopBgm();
+    else playGameOverBgm();
 }
 
 function gameLoop(now) {
     if (!gameStarted) return;
+
     const dt = Math.min(2, (now - lastTime) / (1000 / 60));
     lastTime = now;
 
-    if (!gameEnded) {
-        update(dt);
-    }
+    if (!gameEnded) update(dt);
     draw();
 
-    if (!gameEnded) {
-        requestAnimationFrame(gameLoop);
-    }
+    if (!gameEnded) requestAnimationFrame(gameLoop);
 }
 
 function update(dt) {
-    player.animation += dt;
-    if (player.invincible > 0) player.invincible -= dt;
+    hero.animation += dt;
+    if (hero.invincible > 0) hero.invincible -= dt;
 
     state.elapsed += dt / 60;
     state.time = Math.max(0, 300 - state.elapsed);
     if (state.time <= 0) {
         loseLife('時間切れ。もう一度チャレンジ。');
+        return;
     }
 
     const left = axisLeft();
@@ -255,42 +359,42 @@ function update(dt) {
     const jumpPressed = wantsJump();
 
     if (left && !right) {
-        player.vx -= MOVE_ACCEL * dt;
-        player.facing = -1;
+        hero.vx -= MOVE_ACCEL * dt;
+        hero.facing = -1;
     } else if (right && !left) {
-        player.vx += MOVE_ACCEL * dt;
-        player.facing = 1;
+        hero.vx += MOVE_ACCEL * dt;
+        hero.facing = 1;
     } else {
-        player.vx *= Math.pow(FRICTION, dt);
-        if (Math.abs(player.vx) < 0.04) player.vx = 0;
+        hero.vx *= Math.pow(FRICTION, dt);
+        if (Math.abs(hero.vx) < 0.04) hero.vx = 0;
     }
 
-    player.vx = clamp(player.vx, -MAX_RUN, MAX_RUN);
+    hero.vx = clamp(hero.vx, -MAX_RUN, MAX_RUN);
 
-    if (jumpPressed) player.jumpBuffer = JUMP_BUFFER_FRAMES;
-    else if (player.jumpBuffer > 0) player.jumpBuffer -= dt;
+    if (jumpPressed) hero.jumpBuffer = JUMP_BUFFER_FRAMES;
+    else if (hero.jumpBuffer > 0) hero.jumpBuffer -= dt;
 
-    if (player.grounded) player.coyote = COYOTE_FRAMES;
-    else if (player.coyote > 0) player.coyote -= dt;
+    if (hero.grounded) hero.coyote = COYOTE_FRAMES;
+    else if (hero.coyote > 0) hero.coyote -= dt;
 
-    if (player.jumpBuffer > 0 && player.coyote > 0) {
-        player.vy = JUMP_SPEED;
-        player.grounded = false;
-        player.coyote = 0;
-        player.jumpBuffer = 0;
+    if (hero.jumpBuffer > 0 && hero.coyote > 0) {
+        hero.vy = JUMP_SPEED;
+        hero.grounded = false;
+        hero.coyote = 0;
+        hero.jumpBuffer = 0;
     }
 
-    // Short hop when jump is released early.
-    if (!jumpPressed && player.vy < -4) {
-        player.vy *= 0.86;
+    if (!jumpPressed && hero.vy < -4) {
+        hero.vy *= 0.86;
     }
 
-    movePlayerX(player.vx * dt);
-    player.vy = Math.min(MAX_FALL, player.vy + GRAVITY * dt);
-    movePlayerY(player.vy * dt);
+    moveHeroX(hero.vx * dt);
+    hero.vy = Math.min(MAX_FALL, hero.vy + GRAVITY * dt);
+    moveHeroY(hero.vy * dt);
 
-    if (player.y > H + 120) {
+    if (hero.y > H + 120) {
         loseLife('穴に落ちました。チェックポイントから再開。');
+        return;
     }
 
     updateEnemies(dt);
@@ -298,41 +402,38 @@ function update(dt) {
     checkEnemyHits();
     checkGoal();
 
-    if (player.x > 3200) state.checkpointX = Math.max(state.checkpointX, 3060);
-    if (player.x > 4800) state.checkpointX = Math.max(state.checkpointX, 4680);
+    if (hero.x > 3200) state.checkpointX = Math.max(state.checkpointX, 3060);
+    if (hero.x > 4800) state.checkpointX = Math.max(state.checkpointX, 4680);
 
-    cameraX = clamp(player.x + player.w / 2 - W * 0.42, 0, WORLD_WIDTH - W);
+    cameraX = clamp(hero.x + hero.w / 2 - W * 0.42, 0, WORLD_WIDTH - W);
     updateHud();
 }
 
-function movePlayerX(dx) {
-    player.x += dx;
-    player.x = clamp(player.x, 0, WORLD_WIDTH - player.w);
+function moveHeroX(dx) {
+    hero.x += dx;
+    hero.x = clamp(hero.x, 0, WORLD_WIDTH - hero.w);
 
     for (const p of platforms) {
-        if (!rectsOverlap(player, p)) continue;
-        if (dx > 0) {
-            player.x = p.x - player.w;
-        } else if (dx < 0) {
-            player.x = p.x + p.w;
-        }
-        player.vx = 0;
+        if (!rectsOverlap(hero, p)) continue;
+        if (dx > 0) hero.x = p.x - hero.w;
+        else if (dx < 0) hero.x = p.x + p.w;
+        hero.vx = 0;
     }
 }
 
-function movePlayerY(dy) {
-    player.y += dy;
-    player.grounded = false;
+function moveHeroY(dy) {
+    hero.y += dy;
+    hero.grounded = false;
 
     for (const p of platforms) {
-        if (!rectsOverlap(player, p)) continue;
+        if (!rectsOverlap(hero, p)) continue;
         if (dy > 0) {
-            player.y = p.y - player.h;
-            player.vy = 0;
-            player.grounded = true;
+            hero.y = p.y - hero.h;
+            hero.vy = 0;
+            hero.grounded = true;
         } else if (dy < 0) {
-            player.y = p.y + p.h;
-            player.vy = 0;
+            hero.y = p.y + p.h;
+            hero.vy = 0;
         }
     }
 }
@@ -343,6 +444,7 @@ function updateEnemies(dt) {
             foe.squish += dt;
             continue;
         }
+
         foe.x += foe.vx * dt;
         if (foe.x < foe.minX || foe.x + foe.w > foe.maxX) {
             foe.vx *= -1;
@@ -354,12 +456,8 @@ function updateEnemies(dt) {
 function collectCoins() {
     for (const coin of coins) {
         if (coin.taken) continue;
-        const cx = coin.x;
-        const cy = coin.y;
-        const nearestX = clamp(cx, player.x, player.x + player.w);
-        const nearestY = clamp(cy, player.y, player.y + player.h);
-        const dist = Math.hypot(cx - nearestX, cy - nearestY);
-        if (dist < coin.r + 3) {
+        const coinBox = { x: coin.x - coin.r, y: coin.y - coin.r, w: coin.r * 2, h: coin.r * 2 };
+        if (rectsOverlap(hero, coinBox)) {
             coin.taken = true;
             state.coins += 1;
         }
@@ -367,58 +465,59 @@ function collectCoins() {
 }
 
 function checkEnemyHits() {
+    if (hero.invincible > 0) return;
+
     for (const foe of enemies) {
-        if (!foe.alive || !rectsOverlap(player, foe)) continue;
-        const playerBottom = player.y + player.h;
-        const stomp = player.vy > 2 && playerBottom - foe.y < 26;
-        if (stomp) {
+        if (!foe.alive || !rectsOverlap(hero, foe)) continue;
+
+        const heroBottom = hero.y + hero.h;
+        const enemyTop = foe.y + 10;
+        const isStomp = hero.vy > 0 && heroBottom - enemyTop < 24;
+
+        if (isStomp) {
             foe.alive = false;
             foe.squish = 0;
-            player.vy = -10.5;
+            hero.vy = JUMP_SPEED * 0.55;
             state.coins += 2;
-        } else if (player.invincible <= 0) {
-            loseLife('敵にぶつかりました。踏めば倒せます。');
+        } else {
+            loseLife('敵にぶつかりました。');
         }
+        return;
     }
 }
 
 function checkGoal() {
-    if (rectsOverlap(player, goal)) {
-        const bonus = Math.ceil(state.time / 10);
-        endGame('CLEAR!', `コイン ${state.coins} 枚 + タイムボーナス ${bonus} 点。GitHub公開用の横スクロールコース完成です。`, true);
+    if (rectsOverlap(hero, goal)) {
+        endGame('CLEAR!', `ゴールしました。コイン ${state.coins} 枚獲得。`, true);
     }
 }
 
-function loseLife(reason) {
-    if (gameEnded) return;
+function loseLife(message) {
     state.lives -= 1;
     if (state.lives <= 0) {
-        endGame('GAME OVER', reason, false);
-        updateHud();
+        endGame('GAME OVER', message, false);
         return;
     }
 
-    player.x = state.checkpointX;
-    player.y = 300;
-    player.vx = 0;
-    player.vy = 0;
-    player.invincible = 110;
-    player.grounded = false;
-    cameraX = clamp(player.x - W * 0.25, 0, WORLD_WIDTH - W);
-    updateHud();
+    state.elapsed = 0;
+    state.time = 300;
+    respawnHero(state.checkpointX, 330);
+    cameraX = clamp(hero.x + hero.w / 2 - W * 0.42, 0, WORLD_WIDTH - W);
 }
 
 function draw() {
+    prepareCanvasContext();
     ctx.clearRect(0, 0, W, H);
+
     drawSky();
     ctx.save();
     ctx.translate(-cameraX, 0);
     drawBackgroundHills();
+    drawGoal();
     drawPlatforms();
     drawCoins();
-    drawGoal();
     drawEnemies();
-    drawPlayer();
+    drawHero();
     ctx.restore();
 }
 
@@ -518,183 +617,197 @@ function drawStep(p) {
     ctx.strokeRect(p.x, p.y, p.w, p.h);
 }
 
+function drawGoal() {
+    if (!isVisible(goal.x, 180)) return;
+
+    ctx.fillStyle = '#f8fbff';
+    ctx.fillRect(goal.x, goal.y, goal.w, goal.h);
+    ctx.fillStyle = '#ef476f';
+    ctx.beginPath();
+    ctx.moveTo(goal.x + goal.w, goal.y + 16);
+    ctx.lineTo(goal.x + goal.w + 115, goal.y + 44);
+    ctx.lineTo(goal.x + goal.w, goal.y + 74);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#ffd166';
+    ctx.fillRect(goal.x - 20, goal.y + goal.h, goal.w + 48, 14);
+}
+
 function drawCoins() {
     for (const coin of coins) {
         if (coin.taken || !isVisible(coin.x - coin.r, coin.r * 2)) continue;
-        const shimmer = Math.sin((player.animation + coin.x * 0.04) * 0.12);
-        ctx.save();
-        ctx.translate(coin.x, coin.y);
-        ctx.scale(0.72 + Math.abs(shimmer) * 0.28, 1);
         ctx.fillStyle = '#ffd166';
         ctx.beginPath();
-        ctx.arc(0, 0, coin.r, 0, Math.PI * 2);
+        ctx.arc(coin.x, coin.y, coin.r, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = '#a56d00';
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#c89012';
+        ctx.lineWidth = 3;
         ctx.stroke();
         ctx.fillStyle = 'rgba(255,255,255,0.45)';
-        ctx.fillRect(-3, -8, 4, 16);
-        ctx.restore();
+        ctx.beginPath();
+        ctx.arc(coin.x - 4, coin.y - 5, 3, 0, Math.PI * 2);
+        ctx.fill();
     }
 }
 
 function drawEnemies() {
     for (const foe of enemies) {
-        if (!isVisible(foe.x, foe.w) || (!foe.alive && foe.squish > 18)) continue;
+        if (!isVisible(foe.x, foe.w)) continue;
+        if (!foe.alive && foe.squish > 18) continue;
+
+        const h = foe.alive ? foe.h : Math.max(10, foe.h * 0.28);
+        const y = foe.alive ? foe.y : foe.y + foe.h - h;
+
         ctx.save();
-        if (foe.alive) {
-            ctx.fillStyle = '#7447ff';
-            roundRect(ctx, foe.x, foe.y, foe.w, foe.h, 12);
+        ctx.translate(foe.x + foe.w / 2, y + h / 2);
+        if (foe.vx < 0) ctx.scale(-1, 1);
+
+        if (isLoadedImage(imgEnemy)) {
+            drawImageContain(imgEnemy, -foe.w / 2, -h / 2, foe.w, h);
+        } else {
+            // enemy.png がまだ無い場合のフォールバック表示
+            ctx.fillStyle = '#7b3f1d';
+            ctx.beginPath();
+            ctx.ellipse(0, 2, foe.w / 2, h / 2, 0, 0, Math.PI * 2);
             ctx.fill();
             ctx.fillStyle = '#fff';
             ctx.beginPath();
-            ctx.arc(foe.x + 14, foe.y + 16, 5, 0, Math.PI * 2);
-            ctx.arc(foe.x + 32, foe.y + 16, 5, 0, Math.PI * 2);
+            ctx.arc(-10, -6, 5, 0, Math.PI * 2);
+            ctx.arc(10, -6, 5, 0, Math.PI * 2);
             ctx.fill();
-            ctx.fillStyle = '#17172a';
-            ctx.fillRect(foe.x + 12, foe.y + 16, 4, 5);
-            ctx.fillRect(foe.x + 30, foe.y + 16, 4, 5);
-            ctx.fillStyle = '#3b226f';
-            ctx.fillRect(foe.x + 10, foe.y + 34, 28, 5);
-        } else {
-            ctx.fillStyle = 'rgba(116,71,255,0.55)';
-            roundRect(ctx, foe.x, foe.y + 26, foe.w, 14, 8);
+            ctx.fillStyle = '#111';
+            ctx.beginPath();
+            ctx.arc(-9, -6, 2, 0, Math.PI * 2);
+            ctx.arc(9, -6, 2, 0, Math.PI * 2);
             ctx.fill();
         }
         ctx.restore();
     }
 }
 
-function drawGoal() {
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(goal.x, goal.y, goal.w, goal.h);
-    ctx.fillStyle = '#073b4c';
-    ctx.fillRect(goal.x + goal.w, goal.y + 18, 120, 58);
-    ctx.fillStyle = '#ffd166';
-    ctx.font = 'bold 22px system-ui, sans-serif';
-    ctx.fillText('GOAL', goal.x + goal.w + 25, goal.y + 56);
-    ctx.fillStyle = '#333';
-    ctx.fillRect(goal.x - 4, goal.y + goal.h, goal.w + 8, 8);
-}
+function drawHero() {
+    if (hero.invincible > 0 && Math.floor(hero.invincible / 6) % 2 === 0) return;
 
-function drawPlayer() {
-    if (player.invincible > 0 && Math.floor(player.invincible / 6) % 2 === 0) return;
-
-    const moving = Math.abs(player.vx) > 0.7 && player.grounded;
-    const img = selectedPlayerImage || (moving ? fallbackMove : fallbackStop);
-    const bob = moving ? Math.sin(player.animation * 0.35) * 2 : 0;
+    const moving = Math.abs(hero.vx) > 0.4;
+    const fallback = moving && isLoadedImage(imgMove) ? imgMove : imgStop;
+    const currentImg = selectedPlayerImage || fallback;
 
     ctx.save();
-    ctx.translate(player.x + player.w / 2, player.y + player.h / 2 + bob);
-    if (player.facing < 0) ctx.scale(-1, 1);
+    ctx.translate(hero.x + hero.w / 2, hero.y + hero.h / 2);
+    if (hero.facing < 0) ctx.scale(-1, 1);
 
-    if (img && img.complete && img.naturalWidth > 0) {
-        // Draw as a rounded icon so any later image works well as the hero.
-        ctx.save();
-        roundRect(ctx, -player.w / 2, -player.h / 2, player.w, player.h, 14);
-        ctx.clip();
-        ctx.drawImage(img, -player.w / 2, -player.h / 2, player.w, player.h);
-        ctx.restore();
-        ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-        ctx.lineWidth = 3;
-        roundRect(ctx, -player.w / 2, -player.h / 2, player.w, player.h, 14);
-        ctx.stroke();
+    ctx.shadowColor = 'rgba(0,0,0,0.25)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 4;
+
+    if (isLoadedImage(currentImg)) {
+        drawImageContain(currentImg, -hero.w / 2, -hero.h / 2, hero.w, hero.h);
     } else {
         ctx.fillStyle = '#ef476f';
-        roundRect(ctx, -player.w / 2, -player.h / 2, player.w, player.h, 14);
-        ctx.fill();
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 22px system-ui, sans-serif';
-        ctx.fillText('P', -7, 8);
+        ctx.fillRect(-hero.w / 2, -hero.h / 2, hero.w, hero.h);
     }
+
     ctx.restore();
 }
 
+function drawImageContain(img, x, y, w, h) {
+    if (!isLoadedImage(img)) return;
+
+    const scale = Math.min(w / img.naturalWidth, h / img.naturalHeight);
+    const drawW = img.naturalWidth * scale;
+    const drawH = img.naturalHeight * scale;
+    const drawX = x + (w - drawW) / 2;
+    const drawY = y + (h - drawH) / 2;
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, drawX, drawY, drawW, drawH);
+}
+
+function isLoadedImage(img) {
+    return img && img.complete && img.naturalWidth > 0;
+}
+
 function rectsOverlap(a, b) {
-    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    return a.x < b.x + b.w &&
+           a.x + a.w > b.x &&
+           a.y < b.y + b.h &&
+           a.y + a.h > b.y;
 }
 
 function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
 }
 
-function isVisible(x, w) {
-    return x + w >= cameraX - 100 && x <= cameraX + W + 100;
+function isVisible(x, width) {
+    return x + width > cameraX - 80 && x < cameraX + W + 80;
 }
 
-function roundRect(context, x, y, w, h, r) {
-    const radius = Math.min(r, w / 2, h / 2);
-    context.beginPath();
-    context.moveTo(x + radius, y);
-    context.lineTo(x + w - radius, y);
-    context.quadraticCurveTo(x + w, y, x + w, y + radius);
-    context.lineTo(x + w, y + h - radius);
-    context.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
-    context.lineTo(x + radius, y + h);
-    context.quadraticCurveTo(x, y + h, x, y + h - radius);
-    context.lineTo(x, y + radius);
-    context.quadraticCurveTo(x, y, x + radius, y);
-    context.closePath();
-}
-
-function wrapParallax(value, min, max) {
+function wrapParallax(x, min, max) {
     const span = max - min;
-    let v = value;
-    while (v < min) v += span;
-    while (v > max) v -= span;
-    return v;
+    let value = x;
+    while (value < min) value += span;
+    while (value > max) value -= span;
+    return value;
 }
 
-window.addEventListener('keydown', (event) => {
-    const playable = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'KeyA', 'KeyD', 'KeyW', 'Space'];
-    if (playable.includes(event.code)) {
-        event.preventDefault();
-        keys.add(event.code);
+function setTouch(key, value, button) {
+    touch[key] = value;
+    if (button) button.classList.toggle('pressed', value);
+}
+
+window.addEventListener('keydown', (e) => {
+    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'Space', 'KeyA', 'KeyD', 'KeyW'].includes(e.code)) {
+        e.preventDefault();
     }
+    keys.add(e.code);
 });
 
-window.addEventListener('keyup', (event) => {
-    keys.delete(event.code);
+window.addEventListener('keyup', (e) => {
+    keys.delete(e.code);
 });
 
 for (const button of document.querySelectorAll('.touch-button')) {
     const key = button.dataset.key;
-    const set = (value) => {
-        touch[key] = value;
-        button.classList.toggle('pressed', value);
-    };
-    button.addEventListener('pointerdown', (event) => {
-        event.preventDefault();
-        button.setPointerCapture(event.pointerId);
-        set(true);
+
+    button.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        button.setPointerCapture(e.pointerId);
+        setTouch(key, true, button);
     });
-    button.addEventListener('pointerup', () => set(false));
-    button.addEventListener('pointercancel', () => set(false));
-    button.addEventListener('pointerleave', () => set(false));
+
+    button.addEventListener('pointerup', (e) => {
+        e.preventDefault();
+        setTouch(key, false, button);
+    });
+
+    button.addEventListener('pointercancel', () => {
+        setTouch(key, false, button);
+    });
+
+    button.addEventListener('lostpointercapture', () => {
+        setTouch(key, false, button);
+    });
 }
 
-window.addEventListener('contextmenu', (event) => {
-    if (event.target.classList && event.target.classList.contains('touch-button')) {
-        event.preventDefault();
-    }
-});
-
-imageInput.addEventListener('change', (event) => {
-    const file = event.target.files?.[0];
+imageInput.addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-        const img = new Image();
-        img.onload = () => {
-            selectedPlayerImage = img;
-        };
-        img.src = String(reader.result);
+
+    if (selectedObjectUrl) URL.revokeObjectURL(selectedObjectUrl);
+    selectedObjectUrl = URL.createObjectURL(file);
+
+    const img = new Image();
+    img.onload = () => {
+        selectedPlayerImage = img;
     };
-    reader.readAsDataURL(file);
+    img.src = selectedObjectUrl;
 });
 
 startButton.addEventListener('click', startGame);
 retryButton.addEventListener('click', startGame);
+window.addEventListener('resize', resizeCanvasForHighDpi);
 
-// Draw the title screen background immediately.
+resizeCanvasForHighDpi();
+updateHud();
 draw();

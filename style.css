@@ -352,3 +352,31 @@ button {
         opacity: 1;
     }
 }
+
+/* 外部ブラウザ誘導とBGM安定化後の調整 */
+.secondary-button {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    min-width: 180px;
+    margin: 10px 6px 0;
+    padding: 12px 18px;
+    border: 2px solid rgba(255, 255, 255, 0.42);
+    background: rgba(255, 255, 255, 0.10);
+    color: #fff;
+}
+
+.browser-panel h2 {
+    font-size: clamp(26px, 6vw, 44px);
+}
+
+#open-browser-button {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    min-width: 220px;
+    margin: 8px 6px 0;
+    padding: 14px 22px;
+    background: var(--accent);
+    color: #2c2200;
+}

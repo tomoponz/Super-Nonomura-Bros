@@ -10,6 +10,7 @@ let loopCheckInterval;
 let ytReady = false;
 let ytApiReady = false;
 let bgmRequested = false;
+let bgmPlaying = false;
 let bgmStartSeconds = 4;
 let lastBgmAttempt = 0;
 
@@ -57,8 +58,12 @@ function onPlayerReady() {
 
 function onPlayerStateChange(event) {
     if (event.data === YT.PlayerState.PLAYING) {
+        bgmPlaying = true;
         startLoopCheck();
     } else {
+        if (event.data === YT.PlayerState.PAUSED || event.data === YT.PlayerState.ENDED || event.data === YT.PlayerState.CUED) {
+            bgmPlaying = false;
+        }
         clearInterval(loopCheckInterval);
     }
 }
@@ -81,29 +86,31 @@ function startBgm() {
     bgmRequested = true;
     bgmStartSeconds = 4;
     isGameOver = false;
-    playBgmFrom(4);
+    playBgmFrom(4, true);
 }
 
 function playGameOverBgm() {
     bgmRequested = true;
     bgmStartSeconds = 84;
     isGameOver = true;
-    playBgmFrom(84);
+    playBgmFrom(84, true);
 }
 
-function playBgmFrom(seconds) {
+function playBgmFrom(seconds, forceSeek = false) {
     createBgmPlayer();
 
     if (!ytReady || !player || typeof player.seekTo !== 'function') return;
+    if (!forceSeek && bgmPlaying) return;
 
     const now = performance.now();
-    if (now - lastBgmAttempt < 180) return;
+    // スマホ操作のたびに seekTo / playVideo を連打すると、音量バーが出ている間だけ鳴るような不安定さが出やすい。
+    // そのため、強制開始以外は間隔を空けて一度だけ再試行する。
+    if (!forceSeek && now - lastBgmAttempt < 3500) return;
     lastBgmAttempt = now;
 
     try {
         if (typeof player.unMute === 'function') player.unMute();
-        if (typeof player.setVolume === 'function') player.setVolume(75);
-        player.seekTo(seconds, true);
+        if (forceSeek) player.seekTo(seconds, true);
         player.playVideo();
     } catch (error) {
         console.warn('BGM再生がブラウザにブロックされました', error);
@@ -111,14 +118,17 @@ function playBgmFrom(seconds) {
 }
 
 function resumeBgmFromUserGesture() {
-    // LINE内ブラウザなどは、初回タップ以外で再生許可が下りることがあります。
-    // ゲーム開始後、画面や操作ボタンを触ったタイミングでも再試行します。
-    if (!gameStarted || gameEnded || !bgmRequested) return;
-    playBgmFrom(bgmStartSeconds);
+    // 通常ブラウザで初回タップ時だけ失敗した場合の保険。
+    // 再生中は何もしない。失敗時も数秒に1回だけ再試行し、スマホ操作中のBGMリセットを防ぐ。
+    if (!gameStarted || gameEnded || !bgmRequested || bgmPlaying) return;
+    const now = performance.now();
+    if (now - lastBgmAttempt < 3500) return;
+    playBgmFrom(bgmStartSeconds, true);
 }
 
 function stopBgm() {
     bgmRequested = false;
+    bgmPlaying = false;
     if (!ytReady || !player || typeof player.pauseVideo !== 'function') return;
     player.pauseVideo();
 }
@@ -140,15 +150,18 @@ const resultMessage = document.getElementById('result-message');
 const resultKicker = document.getElementById('result-kicker');
 const startButton = document.getElementById('start-button');
 const retryButton = document.getElementById('retry-button');
+const browserRedirectScreen = document.getElementById('browser-redirect-screen');
+const openBrowserButton = document.getElementById('open-browser-button');
+const continueLineButton = document.getElementById('continue-line-button');
 
 const BASE_VIEW_W = 960;
 const MIN_PORTRAIT_VIEW_W = 360;
 let W = BASE_VIEW_W;
 const H = 540;
 const WORLD_WIDTH = 6500;
-const FLOOR_Y = 470;
 const TILE = 32;
-const GROUND_DEPTH = TILE * 2;
+const FLOOR_Y = TILE * 14;
+const GROUND_DEPTH = TILE * 3;
 
 const GRAVITY = 0.75;
 const MAX_FALL = 18;
@@ -167,6 +180,7 @@ let gameEnded = false;
 let lastTime = 0;
 let cameraX = 0;
 let dpr = 1;
+let goalSequence = null;
 
 const imgStop = new Image();
 imgStop.src = 'assets/images/player/player_stop.png';
@@ -195,8 +209,8 @@ const hero = {
     // 画像を大きくしても、足場や敵との判定が理不尽になりにくいよう分離しています。
     w: 48,
     h: 64,
-    drawW: 84,
-    drawH: 104,
+    drawW: 88,
+    drawH: 108,
     vx: 0,
     vy: 0,
     grounded: false,
@@ -207,40 +221,40 @@ const hero = {
     animation: 0,
 };
 
-// ドット風の横スクロールコース。既存素材を使わず、矩形タイルだけでレトロ感を出しています。
+// 固定サイズのブロックを並べる横スクロールコース。1ブロックを引き伸ばさずに描画します。
 const platforms = [
-    { x: 0, y: FLOOR_Y, w: 760, h: GROUND_DEPTH, kind: 'ground' },
-    { x: 850, y: FLOOR_Y, w: 820, h: GROUND_DEPTH, kind: 'ground' },
-    { x: 1780, y: FLOOR_Y, w: 700, h: GROUND_DEPTH, kind: 'ground' },
-    { x: 2580, y: FLOOR_Y, w: 920, h: GROUND_DEPTH, kind: 'ground' },
-    { x: 3630, y: FLOOR_Y, w: 760, h: GROUND_DEPTH, kind: 'ground' },
-    { x: 4510, y: FLOOR_Y, w: 1990, h: GROUND_DEPTH, kind: 'ground' },
+    // すべてTILE単位で配置。1ブロックを引き伸ばさず、同じ大きさのブロックを並べて描画します。
+    { x: TILE * 0,   y: FLOOR_Y, w: TILE * 24, h: GROUND_DEPTH, kind: 'ground' },
+    { x: TILE * 27,  y: FLOOR_Y, w: TILE * 25, h: GROUND_DEPTH, kind: 'ground' },
+    { x: TILE * 56,  y: FLOOR_Y, w: TILE * 22, h: GROUND_DEPTH, kind: 'ground' },
+    { x: TILE * 81,  y: FLOOR_Y, w: TILE * 29, h: GROUND_DEPTH, kind: 'ground' },
+    { x: TILE * 114, y: FLOOR_Y, w: TILE * 24, h: GROUND_DEPTH, kind: 'ground' },
+    { x: TILE * 141, y: FLOOR_Y, w: TILE * 62, h: GROUND_DEPTH, kind: 'ground' },
 
-    { x: 384, y: 374, w: 96, h: 32, kind: 'brick' },
-    { x: 512, y: 310, w: 64, h: 32, kind: 'question' },
-    { x: 576, y: 310, w: 96, h: 32, kind: 'brick' },
-    { x: 960, y: 390, w: 160, h: 32, kind: 'brick' },
-    { x: 1184, y: 326, w: 64, h: 32, kind: 'question' },
-    { x: 1248, y: 326, w: 160, h: 32, kind: 'brick' },
-    { x: 1450, y: 262, w: 128, h: 32, kind: 'brick' },
-    { x: 1900, y: 366, w: 160, h: 32, kind: 'brick' },
-    { x: 2160, y: 302, w: 192, h: 32, kind: 'brick' },
-    { x: 2700, y: 406, w: 96, h: 64, kind: 'pipe' },
-    { x: 3000, y: 342, w: 128, h: 128, kind: 'pipe' },
-    { x: 3264, y: 286, w: 192, h: 32, kind: 'brick' },
-    { x: 3740, y: 386, w: 160, h: 32, kind: 'brick' },
-    { x: 3970, y: 322, w: 192, h: 32, kind: 'question' },
+    { x: TILE * 12,  y: FLOOR_Y - TILE * 3, w: TILE * 3, h: TILE, kind: 'brick' },
+    { x: TILE * 16,  y: FLOOR_Y - TILE * 5, w: TILE * 2, h: TILE, kind: 'question' },
+    { x: TILE * 18,  y: FLOOR_Y - TILE * 5, w: TILE * 3, h: TILE, kind: 'brick' },
+    { x: TILE * 30,  y: FLOOR_Y - TILE * 2, w: TILE * 5, h: TILE, kind: 'brick' },
+    { x: TILE * 37,  y: FLOOR_Y - TILE * 4, w: TILE * 2, h: TILE, kind: 'question' },
+    { x: TILE * 39,  y: FLOOR_Y - TILE * 4, w: TILE * 5, h: TILE, kind: 'brick' },
+    { x: TILE * 45,  y: FLOOR_Y - TILE * 6, w: TILE * 4, h: TILE, kind: 'brick' },
+    { x: TILE * 59,  y: FLOOR_Y - TILE * 3, w: TILE * 5, h: TILE, kind: 'brick' },
+    { x: TILE * 67,  y: FLOOR_Y - TILE * 5, w: TILE * 6, h: TILE, kind: 'brick' },
+    { x: TILE * 84,  y: FLOOR_Y - TILE * 2, w: TILE * 3, h: TILE * 2, kind: 'pipe' },
+    { x: TILE * 94,  y: FLOOR_Y - TILE * 4, w: TILE * 4, h: TILE * 4, kind: 'pipe' },
+    { x: TILE * 102, y: FLOOR_Y - TILE * 6, w: TILE * 6, h: TILE, kind: 'brick' },
+    { x: TILE * 117, y: FLOOR_Y - TILE * 2, w: TILE * 5, h: TILE, kind: 'brick' },
+    { x: TILE * 124, y: FLOOR_Y - TILE * 4, w: TILE * 6, h: TILE, kind: 'question' },
 
-    { x: 4640, y: 406, w: 96, h: 64, kind: 'step' },
-    { x: 4736, y: 342, w: 96, h: 128, kind: 'step' },
-    { x: 4832, y: 278, w: 96, h: 192, kind: 'step' },
-    { x: 5024, y: 326, w: 256, h: 32, kind: 'brick' },
-    { x: 5376, y: 406, w: 96, h: 64, kind: 'step' },
-    { x: 5472, y: 342, w: 96, h: 128, kind: 'step' },
-    { x: 5568, y: 278, w: 96, h: 192, kind: 'step' },
-    { x: 5664, y: 214, w: 96, h: 256, kind: 'step' },
+    { x: TILE * 145, y: FLOOR_Y - TILE * 2, w: TILE * 3, h: TILE * 2, kind: 'step' },
+    { x: TILE * 148, y: FLOOR_Y - TILE * 4, w: TILE * 3, h: TILE * 4, kind: 'step' },
+    { x: TILE * 151, y: FLOOR_Y - TILE * 6, w: TILE * 3, h: TILE * 6, kind: 'step' },
+    { x: TILE * 157, y: FLOOR_Y - TILE * 4, w: TILE * 8, h: TILE, kind: 'brick' },
+    { x: TILE * 168, y: FLOOR_Y - TILE * 2, w: TILE * 3, h: TILE * 2, kind: 'step' },
+    { x: TILE * 171, y: FLOOR_Y - TILE * 4, w: TILE * 3, h: TILE * 4, kind: 'step' },
+    { x: TILE * 174, y: FLOOR_Y - TILE * 6, w: TILE * 3, h: TILE * 6, kind: 'step' },
+    { x: TILE * 177, y: FLOOR_Y - TILE * 8, w: TILE * 3, h: TILE * 8, kind: 'step' },
 ];
-
 const coins = [
     ...coinLine(430, 330, 4),
     ...coinLine(1000, 350, 5),
@@ -256,15 +270,15 @@ const coins = [
 ];
 
 const enemies = [
-    enemy(700, 424, 580, 740, 1.2),
-    enemy(1320, 424, 980, 1560, 1.35),
-    enemy(2030, 424, 1850, 2390, 1.4),
-    enemy(2880, 424, 2600, 3190, 1.55),
-    enemy(4150, 424, 3660, 4340, 1.45),
-    enemy(5200, 282, 5000, 5260, 1.25),
+    enemy(TILE * 22, FLOOR_Y, TILE * 18, TILE * 24, 1.2),
+    enemy(TILE * 41, FLOOR_Y, TILE * 31, TILE * 49, 1.35),
+    enemy(TILE * 63, FLOOR_Y, TILE * 58, TILE * 75, 1.4),
+    enemy(TILE * 90, FLOOR_Y, TILE * 82, TILE * 100, 1.55),
+    enemy(TILE * 130, FLOOR_Y, TILE * 115, TILE * 136, 1.45),
+    enemy(TILE * 163, FLOOR_Y - TILE * 4, TILE * 157, TILE * 165, 1.25),
 ];
-
-const goal = { x: 6120, y: 176, w: 24, h: 294 };
+const goal = { x: TILE * 191, y: FLOOR_Y - TILE * 10, w: TILE, h: TILE * 10 };
+const goalHouse = { x: TILE * 195, y: FLOOR_Y - TILE * 3, w: TILE * 6, h: TILE * 3 };
 
 function coinLine(startX, y, count) {
     return Array.from({ length: count }, (_, i) => ({
@@ -284,16 +298,15 @@ function coinArc(startX, y, count) {
     }));
 }
 
-function enemy(x, y, minX, maxX, speed) {
+function enemy(x, bottomY, minX, maxX, speed) {
     // w/h は当たり判定。drawW/drawH は見た目の大きさ。
-    // enemy.png を大きく見せつつ、ぶつかり判定は少し小さめにする。
+    // bottomYを基準に置くことで、地面・ブロック上のどちらでも足元が自然に揃います。
     const hitW = 34;
     const hitH = 34;
-    const hitY = y + 46 - hitH;
     return {
         startX: x,
         x,
-        y: hitY,
+        y: bottomY - hitH,
         w: hitW,
         h: hitH,
         drawW: 108,
@@ -337,8 +350,9 @@ function resizeCanvasForHighDpi() {
 
 function prepareCanvasContext() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    // ステージは矩形でドット風に描く。画像だけ drawImageContain 側で高品質化する。
-    ctx.imageSmoothingEnabled = false;
+    // ステージも画像も自然に見えるよう、全体で高品質補間を有効にします。
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
 }
 
 function hideDeprecatedPlayerPicker() {
@@ -371,6 +385,7 @@ function resetGame() {
     }
 
     gameEnded = false;
+    goalSequence = null;
     updateHud();
 }
 
@@ -442,6 +457,12 @@ function gameLoop(now) {
 function update(dt) {
     hero.animation += dt;
     if (hero.invincible > 0) hero.invincible -= dt;
+
+    if (goalSequence) {
+        updateGoalSequence(dt);
+        updateHud();
+        return;
+    }
 
     state.elapsed += dt / 60;
     state.time = Math.max(0, 300 - state.elapsed);
@@ -588,8 +609,52 @@ function checkEnemyHits() {
 
 function checkGoal() {
     if (rectsOverlap(hero, goal)) {
-        endGame('CLEAR!', `ゴールしました。コイン ${state.coins} 枚獲得。`, true);
+        startGoalSequence();
     }
+}
+
+function startGoalSequence() {
+    if (goalSequence) return;
+    goalSequence = { phase: 'slide', timer: 0 };
+    hero.vx = 0;
+    hero.vy = 0;
+    hero.facing = 1;
+    hero.invincible = 9999;
+    hero.x = goal.x - hero.w + 8;
+}
+
+function updateGoalSequence(dt) {
+    goalSequence.timer += dt;
+
+    if (goalSequence.phase === 'slide') {
+        hero.vx = 0;
+        hero.vy = 0;
+        hero.x = goal.x - hero.w + 8;
+        hero.y = Math.min(FLOOR_Y - hero.h, hero.y + 3.1 * dt);
+        if (hero.y >= FLOOR_Y - hero.h - 0.5) {
+            hero.y = FLOOR_Y - hero.h;
+            goalSequence.phase = 'walk';
+            goalSequence.timer = 0;
+        }
+    } else if (goalSequence.phase === 'walk') {
+        hero.vx = 2.2;
+        hero.x += hero.vx * dt;
+        hero.y = FLOOR_Y - hero.h;
+        hero.facing = 1;
+        if (hero.x > goalHouse.x + goalHouse.w * 0.48) {
+            goalSequence.phase = 'enter';
+            goalSequence.timer = 0;
+            hero.vx = 0;
+        }
+    } else if (goalSequence.phase === 'enter') {
+        hero.vx = 0;
+        hero.y = FLOOR_Y - hero.h;
+        if (goalSequence.timer > 26) {
+            endGame('CLEAR!', `ゴールしました。コイン ${state.coins} 枚獲得。`, true);
+        }
+    }
+
+    cameraX = clamp(hero.x + hero.w / 2 - W * 0.42, 0, WORLD_WIDTH - W);
 }
 
 function loseLife(message) {
@@ -623,60 +688,68 @@ function draw() {
 }
 
 function drawSky() {
-    ctx.fillStyle = '#5c94fc';
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, '#6db7ff');
+    sky.addColorStop(1, '#b9e9ff');
+    ctx.fillStyle = sky;
     ctx.fillRect(0, 0, W, H);
 
-    drawPixelCloud(130 - cameraX * 0.15, 88, 1.0);
-    drawPixelCloud(560 - cameraX * 0.12, 64, 0.75);
-    drawPixelCloud(910 - cameraX * 0.18, 124, 0.85);
+    drawSoftCloud(130 - cameraX * 0.15, 88, 1.0);
+    drawSoftCloud(560 - cameraX * 0.12, 64, 0.75);
+    drawSoftCloud(910 - cameraX * 0.18, 124, 0.85);
 }
 
 function drawBackgroundHills() {
     for (let x = -200; x < WORLD_WIDTH + 400; x += 520) {
         const base = FLOOR_Y;
-        drawPixelHill(x + 120, base, 7);
-        drawPixelBush(x + 340, base + 12, 1.0);
+        drawSmoothHill(x + 120, base, 1.0);
+        drawSmoothBush(x + 340, base + 10, 1.0);
     }
 }
 
-function drawPixelCloud(x, y, scale) {
+function drawSoftCloud(x, y, scale) {
     ctx.save();
     ctx.translate(Math.round(wrapParallax(x, -260, W + 260)), Math.round(y));
     ctx.scale(scale, scale);
-    ctx.fillStyle = '#ffffff';
-    px(-32, 16, 32, 24);
-    px(0, 0, 32, 40);
-    px(32, 8, 40, 32);
-    px(72, 20, 32, 20);
-    px(-16, 40, 112, 16);
-    ctx.fillStyle = '#d8f0ff';
-    px(8, 32, 24, 8);
-    px(48, 36, 24, 8);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.94)';
+    ctx.beginPath();
+    ctx.ellipse(0, 28, 32, 22, 0, 0, Math.PI * 2);
+    ctx.ellipse(34, 18, 42, 30, 0, 0, Math.PI * 2);
+    ctx.ellipse(78, 30, 34, 22, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(218, 240, 255, 0.75)';
+    roundRect(-18, 34, 120, 18, 9);
+    ctx.fill();
     ctx.restore();
 }
 
-function drawPixelHill(x, base, blocks) {
-    ctx.fillStyle = '#00a800';
-    for (let row = 0; row < blocks; row++) {
-        const width = (blocks - row) * TILE;
-        const start = x + row * TILE / 2;
-        px(start, base - (row + 1) * TILE, width, TILE);
-    }
-    ctx.fillStyle = '#7cfc70';
-    px(x + 28, base - blocks * TILE + 18, 22, 12);
-    px(x + 96, base - (blocks - 2) * TILE + 12, 26, 12);
+function drawSmoothHill(x, base, scale) {
+    ctx.save();
+    ctx.translate(x, base);
+    ctx.scale(scale, scale);
+    ctx.fillStyle = '#36b24a';
+    ctx.beginPath();
+    ctx.moveTo(-60, 0);
+    ctx.quadraticCurveTo(70, -150, 230, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.20)';
+    ctx.beginPath();
+    ctx.ellipse(72, -82, 22, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
 }
 
-function drawPixelBush(x, y, scale) {
+function drawSmoothBush(x, y, scale) {
     ctx.save();
     ctx.translate(Math.round(x), Math.round(y));
     ctx.scale(scale, scale);
-    ctx.fillStyle = '#00a800';
-    px(0, -24, 32, 24);
-    px(28, -40, 44, 40);
-    px(68, -24, 32, 24);
-    ctx.fillStyle = '#7cfc70';
-    px(32, -30, 16, 10);
+    ctx.fillStyle = '#21a83b';
+    ctx.beginPath();
+    ctx.ellipse(20, -16, 28, 19, 0, 0, Math.PI * 2);
+    ctx.ellipse(58, -25, 36, 26, 0, 0, Math.PI * 2);
+    ctx.ellipse(96, -16, 28, 19, 0, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
 }
 
@@ -692,82 +765,100 @@ function drawPlatforms() {
 }
 
 function drawGround(p) {
-    ctx.fillStyle = '#c84c0c';
-    px(p.x, p.y, p.w, p.h);
-    ctx.fillStyle = '#ffb05a';
-    px(p.x, p.y, p.w, 10);
-    ctx.fillStyle = '#5c2c0c';
-
-    for (let x = p.x; x < p.x + p.w; x += TILE) {
-        px(x, p.y, 2, p.h);
+    const cols = Math.round(p.w / TILE);
+    const rows = Math.round(p.h / TILE);
+    for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+            drawGroundTile(p.x + col * TILE, p.y + row * TILE, row === 0);
+        }
     }
-    for (let y = p.y; y < p.y + p.h; y += 20) {
-        px(p.x, y, p.w, 2);
-    }
+}
 
-    ctx.fillStyle = '#8c3408';
-    for (let x = p.x + 10; x < p.x + p.w; x += 48) {
-        px(x, p.y + 28, 20, 6);
+function drawGroundTile(x, y, isTop) {
+    ctx.fillStyle = isTop ? '#58b947' : '#b56632';
+    px(x, y, TILE, TILE);
+    ctx.fillStyle = isTop ? '#7ed957' : '#d78a45';
+    px(x + 2, y + 2, TILE - 4, 5);
+    ctx.fillStyle = isTop ? '#2f7f32' : '#7a3d22';
+    px(x, y, TILE, 2);
+    px(x, y + TILE - 2, TILE, 2);
+    px(x, y, 2, TILE);
+    px(x + TILE - 2, y, 2, TILE);
+    if (!isTop) {
+        ctx.fillStyle = 'rgba(80, 35, 16, 0.45)';
+        px(x + 8, y + 13, 14, 4);
+        px(x + 20, y + 24, 8, 3);
     }
 }
 
 function drawBrick(p) {
-    const blocks = Math.max(1, Math.round(p.w / TILE));
-    for (let i = 0; i < blocks; i++) {
-        drawBrickBlock(p.x + i * TILE, p.y, TILE, p.h);
+    const cols = Math.round(p.w / TILE);
+    const rows = Math.max(1, Math.round(p.h / TILE));
+    for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+            drawBrickBlock(p.x + col * TILE, p.y + row * TILE);
+        }
     }
 }
 
-function drawBrickBlock(x, y, w, h) {
-    ctx.fillStyle = '#c84c0c';
-    px(x, y, w, h);
-    ctx.fillStyle = '#ffb05a';
-    px(x + 3, y + 3, w - 6, 5);
-    ctx.fillStyle = '#5c2c0c';
-    px(x, y, w, 3);
-    px(x, y + h - 3, w, 3);
-    px(x, y, 3, h);
-    px(x + w - 3, y, 3, h);
-    px(x + w / 2 - 1, y + 4, 2, h - 8);
-    px(x + 4, y + h / 2 - 1, w - 8, 2);
+function drawBrickBlock(x, y) {
+    ctx.fillStyle = '#c96a32';
+    px(x, y, TILE, TILE);
+    ctx.fillStyle = '#f0a35d';
+    px(x + 3, y + 3, TILE - 6, 6);
+    ctx.fillStyle = '#79351c';
+    px(x, y, TILE, 2);
+    px(x, y + TILE - 2, TILE, 2);
+    px(x, y, 2, TILE);
+    px(x + TILE - 2, y, 2, TILE);
+    px(x + 4, y + 16, TILE - 8, 2);
+    px(x + 16, y + 5, 2, 11);
+    px(x + 8, y + 18, 2, 12);
+    px(x + 24, y + 18, 2, 12);
 }
 
 function drawQuestionBlocks(p) {
-    const blocks = Math.max(1, Math.round(p.w / TILE));
-    for (let i = 0; i < blocks; i++) {
-        drawQuestionBlock(p.x + i * TILE, p.y, TILE, p.h);
+    const cols = Math.round(p.w / TILE);
+    const rows = Math.max(1, Math.round(p.h / TILE));
+    for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+            drawQuestionBlock(p.x + col * TILE, p.y + row * TILE);
+        }
     }
 }
 
-function drawQuestionBlock(x, y, w, h) {
-    ctx.fillStyle = '#f8b800';
-    px(x, y, w, h);
-    ctx.fillStyle = '#fff060';
-    px(x + 4, y + 4, w - 8, 5);
-    ctx.fillStyle = '#8c5c00';
-    px(x, y, w, 3);
-    px(x, y + h - 3, w, 3);
-    px(x, y, 3, h);
-    px(x + w - 3, y, 3, h);
+function drawQuestionBlock(x, y) {
+    ctx.fillStyle = '#f0ad2e';
+    px(x, y, TILE, TILE);
+    ctx.fillStyle = '#ffd66a';
+    px(x + 3, y + 3, TILE - 6, 6);
+    ctx.fillStyle = '#8a5a10';
+    px(x, y, TILE, 2);
+    px(x, y + TILE - 2, TILE, 2);
+    px(x, y, 2, TILE);
+    px(x + TILE - 2, y, 2, TILE);
     ctx.fillStyle = '#ffffff';
-    px(x + 13, y + 7, 8, 5);
-    px(x + 21, y + 12, 5, 8);
-    px(x + 16, y + 20, 7, 5);
-    px(x + 16, y + 27, 6, 4);
+    ctx.font = 'bold 24px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('?', x + TILE / 2, y + TILE / 2 + 1);
 }
 
 function drawPipe(p) {
-    ctx.fillStyle = '#005800';
-    px(p.x - 12, p.y, p.w + 24, 28);
-    px(p.x, p.y + 20, p.w, p.h - 20);
-    ctx.fillStyle = '#00a800';
-    px(p.x - 6, p.y + 4, p.w + 12, 18);
-    px(p.x + 6, p.y + 24, p.w - 12, p.h - 28);
-    ctx.fillStyle = '#80d010';
-    px(p.x + 12, p.y + 28, 14, p.h - 34);
-    ctx.fillStyle = '#003800';
-    px(p.x - 12, p.y + 24, p.w + 24, 4);
-    px(p.x + p.w - 10, p.y + 28, 5, p.h - 34);
+    // 当たり判定と同じ幅の本体。上部キャップだけ左右にTILE/2広げる。
+    const capX = p.x - TILE / 2;
+    const capW = p.w + TILE;
+    ctx.fillStyle = '#0a6f30';
+    roundRect(capX, p.y, capW, TILE, 6);
+    ctx.fill();
+    ctx.fillStyle = '#16a34a';
+    roundRect(p.x, p.y + TILE * 0.65, p.w, p.h - TILE * 0.65, 4);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.24)';
+    px(p.x + 10, p.y + TILE + 4, 12, Math.max(8, p.h - TILE - 10));
+    ctx.fillStyle = '#064e24';
+    px(capX, p.y + TILE - 5, capW, 5);
+    px(p.x + p.w - 8, p.y + TILE, 5, p.h - TILE);
 }
 
 function drawStep(p) {
@@ -775,36 +866,66 @@ function drawStep(p) {
 }
 
 function drawGoal() {
-    if (!isVisible(goal.x, 180)) return;
+    if (!isVisible(goal.x - 80, 420)) return;
 
-    ctx.fillStyle = '#ffffff';
-    px(goal.x, goal.y, goal.w, goal.h);
-    ctx.fillStyle = '#d8d8d8';
-    px(goal.x + goal.w - 6, goal.y, 6, goal.h);
-    ctx.fillStyle = '#00a800';
-    px(goal.x + goal.w, goal.y + 24, 112, 28);
-    ctx.fillStyle = '#80d010';
-    px(goal.x + goal.w + 8, goal.y + 30, 82, 8);
-    ctx.fillStyle = '#c84c0c';
-    px(goal.x - 22, goal.y + goal.h, goal.w + 54, 16);
+    drawGoalHouse();
+
+    ctx.fillStyle = '#f8fbff';
+    px(goal.x, goal.y, goal.w * 0.42, goal.h);
+    ctx.fillStyle = '#d1d5db';
+    px(goal.x + goal.w * 0.42 - 4, goal.y, 4, goal.h);
+    ctx.fillStyle = '#22c55e';
+    ctx.beginPath();
+    ctx.moveTo(goal.x + goal.w * 0.42, goal.y + TILE);
+    ctx.lineTo(goal.x + goal.w * 0.42 + TILE * 3.6, goal.y + TILE * 1.55);
+    ctx.lineTo(goal.x + goal.w * 0.42, goal.y + TILE * 2.15);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#b56632';
+    px(goal.x - 12, goal.y + goal.h, goal.w + 24, 12);
+}
+
+function drawGoalHouse() {
+    const h = goalHouse;
+    ctx.fillStyle = '#8b5a2b';
+    roundRect(h.x, h.y + TILE, h.w, h.h - TILE, 6);
+    ctx.fill();
+    ctx.fillStyle = '#a13d2d';
+    ctx.beginPath();
+    ctx.moveTo(h.x - 16, h.y + TILE + 4);
+    ctx.lineTo(h.x + h.w / 2, h.y - 10);
+    ctx.lineTo(h.x + h.w + 16, h.y + TILE + 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#5b3218';
+    roundRect(h.x + h.w / 2 - 18, h.y + h.h - 46, 36, 46, 5);
+    ctx.fill();
+    ctx.fillStyle = '#f6d365';
+    roundRect(h.x + 18, h.y + TILE + 22, 30, 24, 4);
+    ctx.fill();
+    roundRect(h.x + h.w - 48, h.y + TILE + 22, 30, 24, 4);
+    ctx.fill();
 }
 
 function drawCoins() {
     for (const coin of coins) {
         if (coin.taken || !isVisible(coin.x - coin.r, coin.r * 2)) continue;
-        drawPixelCoin(coin.x, coin.y, coin.r);
+        drawSmoothCoin(coin.x, coin.y, coin.r);
     }
 }
 
-function drawPixelCoin(x, y, r) {
-    ctx.fillStyle = '#f8d800';
-    px(x - 8, y - 12, 16, 4);
-    px(x - 12, y - 8, 24, 16);
-    px(x - 8, y + 8, 16, 4);
-    ctx.fillStyle = '#fff060';
-    px(x - 4, y - 8, 5, 16);
-    ctx.fillStyle = '#8c5c00';
-    px(x + 8, y - 5, 4, 10);
+function drawSmoothCoin(x, y, r) {
+    ctx.fillStyle = '#f9c74f';
+    ctx.beginPath();
+    ctx.ellipse(x, y, r * 0.78, r, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#b7791f';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.beginPath();
+    ctx.ellipse(x - r * 0.25, y - r * 0.32, r * 0.18, r * 0.28, 0, 0, Math.PI * 2);
+    ctx.fill();
 }
 
 function drawEnemies() {
@@ -834,7 +955,7 @@ function drawEnemies() {
 }
 
 function drawHero() {
-    if (hero.invincible > 0 && Math.floor(hero.invincible / 6) % 2 === 0) return;
+    if (!goalSequence && hero.invincible > 0 && Math.floor(hero.invincible / 6) % 2 === 0) return;
 
     const currentImg = getHeroFrame();
 
@@ -856,17 +977,10 @@ function drawHero() {
 }
 
 function getHeroFrame() {
-    const moving = Math.abs(hero.vx) > 0.4;
+    const moving = Math.abs(hero.vx) > 0.25 || Boolean(goalSequence && goalSequence.phase === 'walk');
 
-    if (!hero.grounded && isLoadedImage(imgMove)) {
-        return imgMove;
-    }
-
-    if (moving && isLoadedImage(imgMove) && isLoadedImage(imgStop)) {
-        const frame = Math.floor(hero.animation / 7) % 2;
-        return frame === 0 ? imgStop : imgMove;
-    }
-
+    // 画像切り替えは「停止中」と「移動中」の2種類だけに固定。
+    // 距離やブロック単位でパラパラ切り替わる歩行アニメは行いません。
     if (moving && isLoadedImage(imgMove)) return imgMove;
     return imgStop;
 }
@@ -894,7 +1008,7 @@ function drawImageContain(img, x, y, w, h, smoothImage = true) {
     ctx.imageSmoothingEnabled = smoothImage;
     if (smoothImage) ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(img, drawX, drawY, drawW, drawH);
-    ctx.imageSmoothingEnabled = false;
+    ctx.imageSmoothingEnabled = true;
 }
 
 function isLoadedImage(img) {
@@ -905,11 +1019,32 @@ function px(x, y, w, h) {
     ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
 }
 
+function roundRect(x, y, w, h, radius) {
+    const r = Math.min(radius, Math.abs(w) / 2, Math.abs(h) / 2);
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') {
+        ctx.roundRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h), r);
+        return;
+    }
+    const rx = Math.round(x);
+    const ry = Math.round(y);
+    const rw = Math.round(w);
+    const rh = Math.round(h);
+    ctx.moveTo(rx + r, ry);
+    ctx.lineTo(rx + rw - r, ry);
+    ctx.quadraticCurveTo(rx + rw, ry, rx + rw, ry + r);
+    ctx.lineTo(rx + rw, ry + rh - r);
+    ctx.quadraticCurveTo(rx + rw, ry + rh, rx + rw - r, ry + rh);
+    ctx.lineTo(rx + r, ry + rh);
+    ctx.quadraticCurveTo(rx, ry + rh, rx, ry + rh - r);
+    ctx.lineTo(rx, ry + r);
+    ctx.quadraticCurveTo(rx, ry, rx + r, ry);
+}
+
 function getPlatformHitbox(p) {
     if (p.kind === 'pipe') {
-        // drawPipe() は上フチを左右に12px広げて描いているので、
-        // 当たり判定も見た目に合わせる。これでドカンの端にめり込みにくくなる。
-        return { x: p.x - 12, y: p.y, w: p.w + 24, h: p.h };
+        // drawPipe() は上フチを左右にTILE/2広げて描くため、判定も同じ幅に合わせる。
+        return { x: p.x - TILE / 2, y: p.y, w: p.w + TILE, h: p.h };
     }
     return p;
 }
@@ -955,6 +1090,33 @@ function setTouch(key, value, button) {
     if (button) button.classList.toggle('pressed', value);
 }
 
+
+function isLineInAppBrowser() {
+    return /Line\//i.test(navigator.userAgent || '');
+}
+
+function openExternalBrowser() {
+    const url = location.href.split('#')[0];
+    const isAndroid = /Android/i.test(navigator.userAgent || '');
+
+    if (isAndroid) {
+        const parsed = new URL(url);
+        const scheme = parsed.protocol.replace(':', '');
+        const path = `${parsed.host}${parsed.pathname}${parsed.search}`;
+        const intentUrl = `intent://${path}#Intent;scheme=${scheme};package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(url)};end`;
+        location.href = intentUrl;
+        return;
+    }
+
+    window.open(url, '_blank', 'noopener');
+}
+
+function setupLineBrowserGuard() {
+    if (!browserRedirectScreen || !isLineInAppBrowser()) return;
+    browserRedirectScreen.classList.remove('hidden');
+    stopBgm();
+}
+
 window.addEventListener('keydown', (e) => {
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'Space', 'KeyA', 'KeyD', 'KeyW'].includes(e.code)) {
         e.preventDefault();
@@ -992,6 +1154,13 @@ for (const button of document.querySelectorAll('.touch-button')) {
 document.addEventListener('pointerdown', resumeBgmFromUserGesture, { passive: true });
 document.addEventListener('touchend', resumeBgmFromUserGesture, { passive: true });
 
+if (openBrowserButton) openBrowserButton.addEventListener('click', openExternalBrowser);
+if (continueLineButton) {
+    continueLineButton.addEventListener('click', () => {
+        browserRedirectScreen.classList.add('hidden');
+    });
+}
+
 startButton.addEventListener('click', startGame);
 retryButton.addEventListener('click', startGame);
 window.addEventListener('resize', resizeCanvasForHighDpi);
@@ -1000,3 +1169,4 @@ hideDeprecatedPlayerPicker();
 resizeCanvasForHighDpi();
 updateHud();
 draw();
+setupLineBrowserGuard();

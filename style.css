@@ -1,9 +1,18 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+/* =====================================================
+   NES マリオ風リデザイン
+   - Press Start 2P フォント（HUD・見出し・ボタン）
+   - グラスモーフィズム廃止 → 太ボーダー・直角
+   - スカイブルー単色・ハードシャドウ
+===================================================== */
+
 :root {
-    --sky-top: #5c94fc;
-    --panel: rgba(18, 24, 38, 0.92);
-    --text: #f8fbff;
-    --accent: #ffd166;
-    --danger: #ef476f;
+    --sky-top:    #5c94fc;
+    --panel:      rgba(0, 0, 0, 0.92);
+    --text:       #f8fbff;
+    --accent:     #fcd818;   /* NES コインゴールド */
+    --danger:     #d80010;   /* NES レッド */
+    --pixel-font: 'Press Start 2P', monospace;
 }
 
 * {
@@ -46,9 +55,9 @@ body {
     max-width: 1080px;
     aspect-ratio: 16 / 9;
     overflow: hidden;
-    border-radius: 12px;
+    border-radius: 4px;            /* ほぼ直角 = NES TV感 */
     background: var(--sky-top);
-    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 0 0 4px #000, 0 20px 60px rgba(0, 0, 0, 0.5);
     user-select: none;
     touch-action: none;
 }
@@ -61,6 +70,8 @@ canvas {
     image-rendering: auto;
 }
 
+/* ── HUD ────────────────────────────────────────── */
+
 #hud {
     position: absolute;
     top: 0;
@@ -71,17 +82,26 @@ canvas {
     justify-content: space-between;
     align-items: center;
     gap: 10px;
-    padding: 10px clamp(10px, 2vw, 18px);
-    background: linear-gradient(rgba(0, 0, 0, 0.36), rgba(0, 0, 0, 0));
-    font-weight: 900;
-    letter-spacing: 0.03em;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.45);
+    padding: 8px clamp(10px, 2vw, 18px);
+    background: linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));
+    font-family: var(--pixel-font);
+    font-size: clamp(8px, 1.55vw, 12px);
+    font-weight: 400;
+    letter-spacing: 0.06em;
+    /* ハードシャドウ = ファミコン文字の輪郭感 */
+    text-shadow:
+        2px  0   0 #000,
+       -2px  0   0 #000,
+        0    2px 0 #000,
+        0   -2px 0 #000;
     pointer-events: none;
 }
 
 #hud-title {
     color: var(--accent);
 }
+
+/* ── オーバーレイ共通 ─────────────────────────── */
 
 .overlay {
     position: absolute;
@@ -90,32 +110,42 @@ canvas {
     display: grid;
     place-items: center;
     padding: 18px;
-    background: rgba(0, 0, 0, 0.50);
-    backdrop-filter: blur(2px);
+    background: rgba(0, 0, 0, 0.65); /* blur なし → NES らしい画面切り替え感 */
 }
 
 .overlay.hidden {
     display: none;
 }
 
+/* ── パネル ──────────────────────────────────── */
+
 .panel {
     width: min(92%, 560px);
     max-height: calc(100% - 24px);
     overflow-y: auto;
     padding: clamp(18px, 4vw, 32px);
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    border-radius: 18px;
+    /* 太いホワイトボーダー + 外側ブラックで二重枠 = NES メニュー */
+    border: 4px solid rgba(255, 255, 255, 0.85);
+    outline: 4px solid rgba(0, 0, 0, 0.7);
+    border-radius: 4px;
     background: var(--panel);
     text-align: center;
-    box-shadow: 0 16px 50px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 0 0 8px rgba(0, 0, 0, 0.55);
     scrollbar-width: thin;
 }
 
 .panel h1,
 .panel h2 {
-    margin: 6px 0 10px;
-    font-size: clamp(28px, 7vw, 56px);
-    line-height: 1.05;
+    margin: 6px 0 14px;
+    font-family: var(--pixel-font);
+    font-size: clamp(16px, 4vw, 32px);  /* ピクセルフォントは実寸が大きいので縮小 */
+    font-weight: 400;
+    line-height: 1.5;
+    color: var(--accent);
+    /* ハードドロップシャドウ */
+    text-shadow:
+        3px  3px 0 rgba(0, 0, 0, 0.8),
+        2px  0   0 rgba(0, 0, 0, 0.4);
 }
 
 .panel p {
@@ -124,37 +154,63 @@ canvas {
 }
 
 .kicker {
+    font-family: var(--pixel-font);
+    font-size: clamp(7px, 1.6vw, 10px);
+    font-weight: 400;
     color: var(--accent);
-    font-weight: 900;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
+    margin-bottom: 4px;
 }
+
+/* ── ボタン基底 ───────────────────────────────── */
 
 button {
     appearance: none;
     border: 0;
     border-radius: 999px;
     cursor: pointer;
-    font: inherit;
-    font-weight: 900;
+    font-family: var(--pixel-font), system-ui, sans-serif;
+    font-weight: 400;
+    font-size: inherit;
 }
+
+/* ── スタート / リトライ ─────────────────────── */
 
 #start-button,
 #retry-button {
     display: inline-flex;
     justify-content: center;
     align-items: center;
-    min-width: 220px;
-    margin: 8px 6px 0;
-    padding: 14px 22px;
+    min-width: 200px;
+    margin: 12px 6px 0;
+    padding: 14px 24px;
     background: var(--accent);
-    color: #2c2200;
+    color: #1a1000;
+    border-radius: 4px;
+    font-size: clamp(9px, 2vw, 12px);
+    /* ピクセルボタンの "底" を表現する段差 */
+    box-shadow:
+        0 5px 0 0 #a07800,
+        0 0 0 3px #000;
+    transition: transform 0.08s, box-shadow 0.08s;
+}
+
+#start-button:active,
+#retry-button:active {
+    transform: translateY(3px);
+    box-shadow:
+        0 2px 0 0 #a07800,
+        0 0 0 3px #000;
 }
 
 .small-note {
-    color: rgba(255, 255, 255, 0.78);
-    font-size: 13px;
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 12px;
+    font-family: system-ui, sans-serif; /* 小注釈は可読性優先でシステムフォント */
 }
+
+/* ── リザルト画面 ────────────────────────────── */
 
 #result-screen {
     overflow: hidden;
@@ -173,6 +229,7 @@ button {
     opacity: 0;
     overflow: hidden;
     background-position: center;
+    will-change: opacity, transform;
 }
 
 /* 記者会見の机とマイクをリザルト画像より上に重ねる。 */
@@ -239,22 +296,21 @@ button {
 }
 
 #result-screen.result-lose .panel {
-    background: rgba(18, 24, 38, 0.78);
+    background: rgba(0, 0, 0, 0.88);
 }
 
 #result-screen.result-win .panel {
-    background: rgba(18, 24, 38, 0.84);
+    background: rgba(0, 0, 0, 0.88);
 }
 
-
 #result-screen.result-press .panel {
-    background: rgba(18, 24, 38, 0.82);
-    border-color: rgba(255, 255, 255, 0.28);
+    background: rgba(0, 0, 0, 0.86);
+    border-color: rgba(255, 255, 255, 0.85);
 }
 
 #result-screen.result-press-lose .panel {
-    background: rgba(18, 24, 38, 0.68);
-    border-color: rgba(239, 71, 111, 0.58);
+    background: rgba(0, 0, 0, 0.82);
+    border-color: var(--danger);
 }
 
 #result-screen.result-lose #result-visual::before,
@@ -294,28 +350,30 @@ button {
 }
 
 @keyframes loseImpact {
-    0% { transform: scale(0.16) rotate(-5deg); filter: blur(3px); opacity: 0; }
-    60% { transform: scale(1.08) rotate(1deg); filter: blur(0); opacity: 1; }
-    100% { transform: scale(1); filter: blur(0); opacity: 0.96; }
+    0%   { transform: scale(0.16) rotate(-5deg); filter: blur(3px); opacity: 0; }
+    60%  { transform: scale(1.08) rotate(1deg);  filter: blur(0);   opacity: 1; }
+    100% { transform: scale(1);                  filter: blur(0);   opacity: 0.96; }
 }
 
 @keyframes pressLoseImpact {
-    0% { transform: scale(0.18) rotate(-3deg); filter: blur(3px); opacity: 0; }
-    60% { transform: scale(0.92) rotate(0.5deg); filter: blur(0); opacity: 0.82; }
-    100% { transform: scale(0.86); filter: blur(0); opacity: 0.78; }
+    0%   { transform: scale(0.18) rotate(-3deg);  filter: blur(3px); opacity: 0; }
+    60%  { transform: scale(0.92) rotate(0.5deg); filter: blur(0);   opacity: 0.82; }
+    100% { transform: scale(0.86);                filter: blur(0);   opacity: 0.78; }
 }
 
 @keyframes winWallpaper {
     from { background-position: 0 0; }
-    to { background-position: 164px 164px; }
+    to   { background-position: 164px 164px; }
 }
 
 @keyframes tearFlood {
-    0% { transform: translateY(-26px) scaleY(0.28); opacity: 0; }
-    18% { opacity: 0.9; }
-    55% { transform: translateY(18px) scaleY(1.0); opacity: 0.88; }
-    100% { transform: translateY(96px) scaleY(1.55); opacity: 0; }
+    0%   { transform: translateY(-26px) scaleY(0.28); opacity: 0; }
+    18%  { opacity: 0.9; }
+    55%  { transform: translateY(18px)  scaleY(1.0);  opacity: 0.88; }
+    100% { transform: translateY(96px)  scaleY(1.55); opacity: 0; }
 }
+
+/* ── タッチコントロール ───────────────────────── */
 
 #touch-controls {
     position: absolute;
@@ -333,14 +391,19 @@ button {
     gap: 12px;
 }
 
+/* NES コントローラーのボタン感 = 角丸控えめ・太ボーダー */
 .touch-button {
     width: clamp(62px, 12vw, 92px);
     height: clamp(62px, 12vw, 92px);
-    border: 2px solid rgba(255, 255, 255, 0.72);
-    background: rgba(13, 21, 36, 0.62);
+    border: 3px solid rgba(255, 255, 255, 0.85);
+    background: rgba(0, 0, 0, 0.72);
     color: #fff;
-    font-size: clamp(23px, 5vw, 36px);
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.24);
+    font-family: var(--pixel-font);
+    font-size: clamp(18px, 4vw, 28px);
+    border-radius: 8px;     /* 丸くしすぎない */
+    box-shadow:
+        0 4px 0 rgba(0, 0, 0, 0.55),
+        inset 0 1px 0 rgba(255, 255, 255, 0.18);
     pointer-events: auto;
     touch-action: none;
 }
@@ -348,14 +411,18 @@ button {
 .jump-button {
     width: clamp(86px, 17vw, 126px);
     height: clamp(86px, 17vw, 126px);
-    background: rgba(239, 71, 111, 0.82);
-    font-size: clamp(14px, 3.4vw, 22px);
+    background: rgba(200, 0, 14, 0.88);  /* NES レッド */
+    font-size: clamp(9px, 2.4vw, 14px);
+    border-radius: 8px;
+    border-color: rgba(255, 180, 180, 0.8);
 }
 
 .touch-button:active,
 .touch-button.pressed {
-    transform: translateY(2px) scale(0.96);
-    filter: brightness(1.15);
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+    filter: brightness(1.2);
+    will-change: transform;
 }
 
 /* LINE内ブラウザ対策。0px・display:none・画面外配置だとYouTubeが再生されないことがある。 */
@@ -369,6 +436,8 @@ button {
     pointer-events: none;
     z-index: -1;
 }
+
+/* ── 縦持ち ───────────────────────────────────── */
 
 @media (orientation: portrait) {
     body {
@@ -392,10 +461,10 @@ button {
     }
 
     #hud {
-        font-size: clamp(11px, 3vw, 14px);
+        font-size: clamp(7px, 2.6vw, 11px);
         gap: 6px;
         padding: max(8px, env(safe-area-inset-top)) 10px 10px;
-        background: linear-gradient(rgba(0, 0, 0, 0.48), rgba(0, 0, 0, 0));
+        background: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0));
     }
 
     #hud-title {
@@ -411,19 +480,19 @@ button {
         width: min(96vw, 520px);
         max-height: calc(100dvh - 154px);
         padding: 14px 14px 16px;
-        border-radius: 14px;
+        border-radius: 4px;
     }
 
     .kicker {
         margin-top: 0;
-        font-size: clamp(12px, 3.5vw, 15px);
+        font-size: clamp(7px, 2.8vw, 10px);
     }
 
     .panel h1,
     .panel h2 {
-        margin: 4px 0 8px;
-        font-size: clamp(28px, 8.5vw, 44px);
-        line-height: 1.05;
+        margin: 4px 0 10px;
+        font-size: clamp(14px, 6.5vw, 28px);
+        line-height: 1.5;
     }
 
     .panel p {
@@ -436,8 +505,8 @@ button {
     #retry-button {
         min-width: min(78vw, 240px);
         padding: 13px 20px;
-        margin-top: 8px;
-        font-size: clamp(15px, 4.2vw, 18px);
+        margin-top: 10px;
+        font-size: clamp(9px, 3.4vw, 12px);
     }
 
     .small-note {
@@ -457,16 +526,18 @@ button {
         width: clamp(76px, 21vw, 104px);
         height: clamp(76px, 21vw, 104px);
         border-width: 3px;
-        background: rgba(13, 21, 36, 0.72);
-        font-size: clamp(26px, 7vw, 38px);
+        background: rgba(0, 0, 0, 0.78);
+        font-size: clamp(22px, 6.5vw, 34px);
     }
 
     .jump-button {
         width: clamp(104px, 29vw, 142px);
         height: clamp(104px, 29vw, 142px);
-        background: rgba(239, 71, 111, 0.88);
+        background: rgba(200, 0, 14, 0.92);
     }
 }
+
+/* ── 横持ち・低い画面 ─────────────────────────── */
 
 @media (orientation: landscape) and (max-height: 520px) {
     body {
@@ -486,7 +557,7 @@ button {
 
     .panel h1,
     .panel h2 {
-        font-size: clamp(26px, 8vh, 42px);
+        font-size: clamp(14px, 6vh, 26px);
     }
 
     .panel p {
@@ -504,6 +575,8 @@ button {
     }
 }
 
+/* ── PCホバー時だけタッチボタン表示 ──────────── */
+
 @media (hover: hover) and (pointer: fine) {
     #touch-controls {
         opacity: 0.35;
@@ -514,20 +587,33 @@ button {
     }
 }
 
-/* 外部ブラウザ誘導とBGM安定化後の調整 */
+/* ── ブラウザ誘導パネル ───────────────────────── */
+
 .browser-panel h2 {
-    font-size: clamp(26px, 6vw, 44px);
+    font-size: clamp(14px, 4vw, 28px);
 }
 
 #open-browser-button {
     display: inline-flex;
     justify-content: center;
     align-items: center;
-    min-width: 220px;
+    min-width: 200px;
     margin: 8px 6px 0;
     padding: 14px 22px;
     background: var(--accent);
-    color: #2c2200;
+    color: #1a1000;
+    border-radius: 4px;
+    font-size: clamp(9px, 2vw, 12px);
+    box-shadow:
+        0 5px 0 0 #a07800,
+        0 0 0 3px #000;
+}
+
+#open-browser-button:active {
+    transform: translateY(3px);
+    box-shadow:
+        0 2px 0 0 #a07800,
+        0 0 0 3px #000;
 }
 
 #result-message {

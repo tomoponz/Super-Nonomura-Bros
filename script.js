@@ -250,6 +250,7 @@ const COYOTE_FRAMES = 7;
 const JUMP_BUFFER_FRAMES = 8;
 const BLOCK_BUMP_FRAMES = 12;
 const HIDDEN_BLOCK_REBOUND = 8.4;
+const CAMERA_LEAD = 0.42;   // カメラがプレイヤーより前方を見せる割合
 
 const keys = new Set();
 const touch = { left: false, right: false, jump: false };
@@ -260,6 +261,7 @@ let lastTime = 0;
 let cameraX = 0;
 let dpr = 1;
 let goalSequence = null;
+let pressConferenceActive = false;
 
 const imgStop = new Image();
 imgStop.src = 'assets/images/player/player_stop.png';
@@ -498,7 +500,7 @@ function resizeCanvasForHighDpi() {
     prepareCanvasContext();
 
     if (gameStarted) {
-        cameraX = clamp(hero.x + hero.w / 2 - W * 0.42, 0, WORLD_WIDTH - W);
+        cameraX = clamp(hero.x + hero.w / 2 - W * CAMERA_LEAD, 0, WORLD_WIDTH - W);
     }
 }
 
@@ -509,13 +511,8 @@ function prepareCanvasContext() {
     ctx.imageSmoothingQuality = 'high';
 }
 
-function hideDeprecatedPlayerPicker() {
-    const input = document.getElementById('player-image-input');
-    const fileButton = input ? input.closest('.file-button') : null;
-    if (fileButton) fileButton.style.display = 'none';
-}
-
 function resetGame() {
+    pressConferenceActive = false;
     state.coins = 0;
     state.moneyManYen = 0;
     state.lives = 1;
@@ -595,6 +592,7 @@ function startGame() {
 
 function endGame(title, message, isClear, resultMode = null) {
     gameEnded = true;
+    pressConferenceActive = (resultMode === 'press' || resultMode === 'press-lose');
 
     if (resultMode === 'press') {
         resultKicker.textContent = 'PRESS CONFERENCE';
@@ -705,7 +703,7 @@ function update(dt) {
     if (hero.x > 3200) state.checkpointX = Math.max(state.checkpointX, 3060);
     if (hero.x > 4800) state.checkpointX = Math.max(state.checkpointX, 4680);
 
-    cameraX = clamp(hero.x + hero.w / 2 - W * 0.42, 0, WORLD_WIDTH - W);
+    cameraX = clamp(hero.x + hero.w / 2 - W * CAMERA_LEAD, 0, WORLD_WIDTH - W);
     updateHud();
 }
 
@@ -932,7 +930,7 @@ function updateGoalSequence(dt) {
         }
     }
 
-    cameraX = clamp(hero.x + hero.w / 2 - W * 0.42, 0, WORLD_WIDTH - W);
+    cameraX = clamp(hero.x + hero.w / 2 - W * CAMERA_LEAD, 0, WORLD_WIDTH - W);
 }
 
 function loseLife(message) {
@@ -946,7 +944,7 @@ function loseLife(message) {
     state.elapsed = 0;
     state.time = 300;
     respawnHero(state.checkpointX, 340);
-    cameraX = clamp(hero.x + hero.w / 2 - W * 0.42, 0, WORLD_WIDTH - W);
+    cameraX = clamp(hero.x + hero.w / 2 - W * CAMERA_LEAD, 0, WORLD_WIDTH - W);
 }
 
 function draw() {
@@ -972,7 +970,7 @@ function draw() {
 }
 
 function isPressConferenceResult() {
-    return gameEnded && resultTitle && resultTitle.textContent === '記者会見スタート';
+    return pressConferenceActive;
 }
 
 function shouldAnimateEndedScene() {
@@ -1192,10 +1190,8 @@ function drawReporterCamera(x, y, tilt) {
 }
 
 function drawSky() {
-    const sky = ctx.createLinearGradient(0, 0, 0, H);
-    sky.addColorStop(0, '#6db7ff');
-    sky.addColorStop(1, '#b9e9ff');
-    ctx.fillStyle = sky;
+    // NES マリオと同じフラットな単色スカイブルー（グラデーションなし）
+    ctx.fillStyle = '#5c94fc';
     ctx.fillRect(0, 0, W, H);
 
     drawSoftCloud(130 - cameraX * 0.15, 88, 1.0);
@@ -1337,16 +1333,6 @@ function drawBrickBlock(x, y) {
     px(x + 16, y + 5, 2, 11);
     px(x + 8, y + 18, 2, 12);
     px(x + 24, y + 18, 2, 12);
-}
-
-function drawQuestionBlocks(p) {
-    const cols = Math.round(p.w / TILE);
-    const rows = Math.max(1, Math.round(p.h / TILE));
-    for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < cols; col++) {
-            drawQuestionBlock(p.x + col * TILE, p.y + row * TILE);
-        }
-    }
 }
 
 function drawQuestionBlock(x, y) {
@@ -1786,10 +1772,8 @@ function isVisible(x, width) {
 
 function wrapParallax(x, min, max) {
     const span = max - min;
-    let value = x;
-    while (value < min) value += span;
-    while (value > max) value -= span;
-    return value;
+    // while ループを排除し、剰余演算で常に O(1) に収める。
+    return min + ((x - min) % span + span) % span;
 }
 
 function setTouch(key, value, button) {
@@ -1870,7 +1854,6 @@ startButton.addEventListener('click', startGame);
 retryButton.addEventListener('click', startGame);
 window.addEventListener('resize', resizeCanvasForHighDpi);
 
-hideDeprecatedPlayerPicker();
 resizeCanvasForHighDpi();
 updateHud();
 draw();

@@ -874,7 +874,7 @@ function finishGoalResult() {
     if (amountManYen <= 100) {
         const message = amountManYen <= 0
             ? '支出ゼロ！清廉潔白な議員活動です！'
-            : `不自然な支出：約${displayAmount}万円\nコイン${coinCount}枚ぶんを含む支出ですが、まだwin.png演出で済みそうです。`;
+            : `不自然な支出：約${displayAmount}万円\nコイン${coinCount}枚ぶんを含む支出ですが、まだ炎上で済みそうです。`;
         endGame('CLEAR!', message, true, 'win');
         return;
     }
@@ -885,7 +885,7 @@ function finishGoalResult() {
         return;
     }
 
-    const message = `不自然な支出：約${displayAmount}万円\nこれはもう、泣き乱れるしかありません！\n300万円以上なので、記者会見に加えて通常のGAME OVER演出も発動します。`;
+    const message = `不自然な支出：約${displayAmount}万円\nこれはもう、泣き乱れるしかありません！\n300万円以上。`;
     endGame('記者会見スタート', message, false, 'press-lose');
 }
 

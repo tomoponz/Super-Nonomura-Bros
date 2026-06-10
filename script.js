@@ -2,7 +2,7 @@
 
 // ==========================================
 // 1. YouTube API と BGM制御のセットアップ
-//    ここは「最初のコードで動いていた方式」を残しています。
+//    元のコードで動いていた seekTo 方式を維持しています。
 // ==========================================
 let player;
 let isGameOver = false;
@@ -17,13 +17,13 @@ function onYouTubeIframeAPIReady() {
         width: '0',
         videoId: VIDEO_ID,
         playerVars: {
-            'playsinline': 1,
-            'controls': 0,
-            'disablekb': 1
+            playsinline: 1,
+            controls: 0,
+            disablekb: 1
         },
         events: {
-            'onReady': onPlayerReady,
-            'onStateChange': onPlayerStateChange
+            onReady: onPlayerReady,
+            onStateChange: onPlayerStateChange
         }
     });
 }
@@ -90,19 +90,19 @@ const resultMessage = document.getElementById('result-message');
 const resultKicker = document.getElementById('result-kicker');
 const startButton = document.getElementById('start-button');
 const retryButton = document.getElementById('retry-button');
-const imageInput = document.getElementById('player-image-input');
 
 const W = 960;
 const H = 540;
-const WORLD_WIDTH = 6200;
+const WORLD_WIDTH = 6500;
 const FLOOR_Y = 470;
+const TILE = 32;
 
 const GRAVITY = 0.75;
 const MAX_FALL = 18;
-const MOVE_ACCEL = 0.85;
+const MOVE_ACCEL = 0.84;
 const FRICTION = 0.78;
-const MAX_RUN = 7.2;
-const JUMP_SPEED = -15.8;
+const MAX_RUN = 7.25;
+const JUMP_SPEED = -15.9;
 const COYOTE_FRAMES = 7;
 const JUMP_BUFFER_FRAMES = 8;
 
@@ -114,8 +114,6 @@ let gameEnded = false;
 let lastTime = 0;
 let cameraX = 0;
 let dpr = 1;
-let selectedPlayerImage = null;
-let selectedObjectUrl = null;
 
 const imgStop = new Image();
 imgStop.src = 'assets/images/player/player_stop.png';
@@ -123,21 +121,15 @@ imgStop.src = 'assets/images/player/player_stop.png';
 const imgMove = new Image();
 imgMove.src = 'assets/images/player/player_move.png';
 
-const imgPlayerIcon = new Image();
-imgPlayerIcon.onload = () => {
-    selectedPlayerImage = imgPlayerIcon;
-};
-imgPlayerIcon.onerror = () => {
-    selectedPlayerImage = null;
-};
-imgPlayerIcon.src = 'assets/images/player/player_icon.png';
+// 任意画像アップロード機能は廃止。
+// player_icon.png の自動読み込みも行わないため、player_stop / player_move の歩行アニメが必ず使われます。
 
 const imgEnemy = new Image();
 imgEnemy.src = 'assets/images/player/enemy.png';
 
 const state = {
     coins: 0,
-    lives: 3,
+    lives: 1,
     time: 300,
     elapsed: 0,
     checkpointX: 80,
@@ -158,38 +150,42 @@ const hero = {
     animation: 0,
 };
 
-// 1-1風ではなく、GitHub公開しやすいオリジナルの長い横スクロールコースです。
+// ドット風の横スクロールコース。既存素材を使わず、矩形タイルだけでレトロ感を出しています。
 const platforms = [
     { x: 0, y: FLOOR_Y, w: 760, h: 70, kind: 'ground' },
     { x: 850, y: FLOOR_Y, w: 820, h: 70, kind: 'ground' },
     { x: 1780, y: FLOOR_Y, w: 700, h: 70, kind: 'ground' },
     { x: 2580, y: FLOOR_Y, w: 920, h: 70, kind: 'ground' },
     { x: 3630, y: FLOOR_Y, w: 760, h: 70, kind: 'ground' },
-    { x: 4510, y: FLOOR_Y, w: 1690, h: 70, kind: 'ground' },
+    { x: 4510, y: FLOOR_Y, w: 1990, h: 70, kind: 'ground' },
 
-    { x: 410, y: 370, w: 110, h: 26, kind: 'brick' },
-    { x: 560, y: 310, w: 150, h: 26, kind: 'brick' },
-    { x: 980, y: 390, w: 150, h: 26, kind: 'brick' },
-    { x: 1220, y: 320, w: 170, h: 26, kind: 'brick' },
-    { x: 1450, y: 260, w: 120, h: 26, kind: 'brick' },
-    { x: 1900, y: 365, w: 150, h: 26, kind: 'brick' },
-    { x: 2180, y: 300, w: 160, h: 26, kind: 'brick' },
-    { x: 2700, y: 405, w: 110, h: 65, kind: 'pipe' },
-    { x: 3000, y: 350, w: 130, h: 120, kind: 'pipe' },
-    { x: 3270, y: 285, w: 180, h: 26, kind: 'brick' },
-    { x: 3740, y: 385, w: 160, h: 26, kind: 'brick' },
-    { x: 3980, y: 315, w: 170, h: 26, kind: 'brick' },
-    { x: 4640, y: 410, w: 90, h: 60, kind: 'step' },
-    { x: 4730, y: 350, w: 90, h: 120, kind: 'step' },
-    { x: 4820, y: 290, w: 90, h: 180, kind: 'step' },
-    { x: 5000, y: 330, w: 260, h: 26, kind: 'brick' },
-    { x: 5380, y: 390, w: 90, h: 80, kind: 'step' },
-    { x: 5470, y: 330, w: 90, h: 140, kind: 'step' },
-    { x: 5560, y: 270, w: 90, h: 200, kind: 'step' },
+    { x: 384, y: 374, w: 96, h: 32, kind: 'brick' },
+    { x: 512, y: 310, w: 64, h: 32, kind: 'question' },
+    { x: 576, y: 310, w: 96, h: 32, kind: 'brick' },
+    { x: 960, y: 390, w: 160, h: 32, kind: 'brick' },
+    { x: 1184, y: 326, w: 64, h: 32, kind: 'question' },
+    { x: 1248, y: 326, w: 160, h: 32, kind: 'brick' },
+    { x: 1450, y: 262, w: 128, h: 32, kind: 'brick' },
+    { x: 1900, y: 366, w: 160, h: 32, kind: 'brick' },
+    { x: 2160, y: 302, w: 192, h: 32, kind: 'brick' },
+    { x: 2700, y: 406, w: 96, h: 64, kind: 'pipe' },
+    { x: 3000, y: 342, w: 128, h: 128, kind: 'pipe' },
+    { x: 3264, y: 286, w: 192, h: 32, kind: 'brick' },
+    { x: 3740, y: 386, w: 160, h: 32, kind: 'brick' },
+    { x: 3970, y: 322, w: 192, h: 32, kind: 'question' },
+
+    { x: 4640, y: 406, w: 96, h: 64, kind: 'step' },
+    { x: 4736, y: 342, w: 96, h: 128, kind: 'step' },
+    { x: 4832, y: 278, w: 96, h: 192, kind: 'step' },
+    { x: 5024, y: 326, w: 256, h: 32, kind: 'brick' },
+    { x: 5376, y: 406, w: 96, h: 64, kind: 'step' },
+    { x: 5472, y: 342, w: 96, h: 128, kind: 'step' },
+    { x: 5568, y: 278, w: 96, h: 192, kind: 'step' },
+    { x: 5664, y: 214, w: 96, h: 256, kind: 'step' },
 ];
 
 const coins = [
-    ...coinLine(450, 330, 4),
+    ...coinLine(430, 330, 4),
     ...coinLine(1000, 350, 5),
     ...coinArc(1260, 270, 6),
     ...coinLine(1900, 320, 4),
@@ -203,15 +199,15 @@ const coins = [
 ];
 
 const enemies = [
-    enemy(700, 422, 580, 740, 1.2),
-    enemy(1320, 422, 980, 1560, 1.35),
-    enemy(2030, 422, 1850, 2390, 1.4),
-    enemy(2880, 422, 2600, 3190, 1.55),
-    enemy(4150, 422, 3660, 4340, 1.45),
+    enemy(700, 424, 580, 740, 1.2),
+    enemy(1320, 424, 980, 1560, 1.35),
+    enemy(2030, 424, 1850, 2390, 1.4),
+    enemy(2880, 424, 2600, 3190, 1.55),
+    enemy(4150, 424, 3660, 4340, 1.45),
     enemy(5200, 282, 5000, 5260, 1.25),
 ];
 
-const goal = { x: 5930, y: 190, w: 26, h: 280 };
+const goal = { x: 6120, y: 176, w: 24, h: 294 };
 
 function coinLine(startX, y, count) {
     return Array.from({ length: count }, (_, i) => ({
@@ -252,13 +248,24 @@ function resizeCanvasForHighDpi() {
 
 function prepareCanvasContext() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
+    // ステージは矩形でドット風に描く。画像だけ drawImageContain 側で高品質化する。
+    ctx.imageSmoothingEnabled = false;
+}
+
+function hideDeprecatedPlayerPicker() {
+    const input = document.getElementById('player-image-input');
+    const fileButton = input ? input.closest('.file-button') : null;
+    if (fileButton) fileButton.style.display = 'none';
+
+    const note = document.querySelector('.small-note');
+    if (note) {
+        note.innerHTML = 'プレイヤーは <code>player_stop.png</code> / <code>player_move.png</code> で歩行アニメします。<br />敵は <code>assets/images/player/enemy.png</code> を使用します。';
+    }
 }
 
 function resetGame() {
     state.coins = 0;
-    state.lives = 3;
+    state.lives = 1;
     state.time = 300;
     state.elapsed = 0;
     state.checkpointX = 80;
@@ -393,7 +400,7 @@ function update(dt) {
     moveHeroY(hero.vy * dt);
 
     if (hero.y > H + 120) {
-        loseLife('穴に落ちました。チェックポイントから再開。');
+        loseLife('穴に落ちました。');
         return;
     }
 
@@ -402,6 +409,7 @@ function update(dt) {
     checkEnemyHits();
     checkGoal();
 
+    // 残機1なので実質チェックポイント再開は使わないが、将来戻せるよう値は維持。
     if (hero.x > 3200) state.checkpointX = Math.max(state.checkpointX, 3060);
     if (hero.x > 4800) state.checkpointX = Math.max(state.checkpointX, 4680);
 
@@ -496,6 +504,7 @@ function loseLife(message) {
     state.lives -= 1;
     if (state.lives <= 0) {
         endGame('GAME OVER', message, false);
+        updateHud();
         return;
     }
 
@@ -511,7 +520,7 @@ function draw() {
 
     drawSky();
     ctx.save();
-    ctx.translate(-cameraX, 0);
+    ctx.translate(-Math.round(cameraX), 0);
     drawBackgroundHills();
     drawGoal();
     drawPlatforms();
@@ -522,42 +531,60 @@ function draw() {
 }
 
 function drawSky() {
-    const sky = ctx.createLinearGradient(0, 0, 0, H);
-    sky.addColorStop(0, '#70c5ff');
-    sky.addColorStop(1, '#bdefff');
-    ctx.fillStyle = sky;
+    ctx.fillStyle = '#5c94fc';
     ctx.fillRect(0, 0, W, H);
 
-    drawCloud(130 - cameraX * 0.15, 95, 1.0);
-    drawCloud(560 - cameraX * 0.12, 70, 0.72);
-    drawCloud(910 - cameraX * 0.18, 130, 0.85);
+    drawPixelCloud(130 - cameraX * 0.15, 88, 1.0);
+    drawPixelCloud(560 - cameraX * 0.12, 64, 0.75);
+    drawPixelCloud(910 - cameraX * 0.18, 124, 0.85);
 }
 
 function drawBackgroundHills() {
     for (let x = -200; x < WORLD_WIDTH + 400; x += 520) {
         const base = FLOOR_Y;
-        ctx.fillStyle = '#77c66e';
-        ctx.beginPath();
-        ctx.ellipse(x + 160, base + 26, 180, 115, 0, Math.PI, 0, true);
-        ctx.fill();
-        ctx.fillStyle = 'rgba(255,255,255,0.16)';
-        ctx.beginPath();
-        ctx.ellipse(x + 100, base - 10, 44, 22, 0, 0, Math.PI * 2);
-        ctx.fill();
+        drawPixelHill(x + 120, base, 7);
+        drawPixelBush(x + 340, base + 12, 1.0);
     }
 }
 
-function drawCloud(x, y, scale) {
+function drawPixelCloud(x, y, scale) {
     ctx.save();
-    ctx.translate(wrapParallax(x, -260, W + 260), y);
+    ctx.translate(Math.round(wrapParallax(x, -260, W + 260)), Math.round(y));
     ctx.scale(scale, scale);
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.beginPath();
-    ctx.arc(0, 20, 25, 0, Math.PI * 2);
-    ctx.arc(28, 8, 32, 0, Math.PI * 2);
-    ctx.arc(62, 20, 24, 0, Math.PI * 2);
-    ctx.fillRect(-6, 20, 78, 26);
-    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    px(-32, 16, 32, 24);
+    px(0, 0, 32, 40);
+    px(32, 8, 40, 32);
+    px(72, 20, 32, 20);
+    px(-16, 40, 112, 16);
+    ctx.fillStyle = '#d8f0ff';
+    px(8, 32, 24, 8);
+    px(48, 36, 24, 8);
+    ctx.restore();
+}
+
+function drawPixelHill(x, base, blocks) {
+    ctx.fillStyle = '#00a800';
+    for (let row = 0; row < blocks; row++) {
+        const width = (blocks - row) * TILE;
+        const start = x + row * TILE / 2;
+        px(start, base - (row + 1) * TILE, width, TILE);
+    }
+    ctx.fillStyle = '#7cfc70';
+    px(x + 28, base - blocks * TILE + 18, 22, 12);
+    px(x + 96, base - (blocks - 2) * TILE + 12, 26, 12);
+}
+
+function drawPixelBush(x, y, scale) {
+    ctx.save();
+    ctx.translate(Math.round(x), Math.round(y));
+    ctx.scale(scale, scale);
+    ctx.fillStyle = '#00a800';
+    px(0, -24, 32, 24);
+    px(28, -40, 44, 40);
+    px(68, -24, 32, 24);
+    ctx.fillStyle = '#7cfc70';
+    px(32, -30, 16, 10);
     ctx.restore();
 }
 
@@ -567,87 +594,125 @@ function drawPlatforms() {
         if (p.kind === 'ground') drawGround(p);
         else if (p.kind === 'pipe') drawPipe(p);
         else if (p.kind === 'step') drawStep(p);
+        else if (p.kind === 'question') drawQuestionBlocks(p);
         else drawBrick(p);
     }
 }
 
 function drawGround(p) {
-    ctx.fillStyle = '#8c5a2b';
-    ctx.fillRect(p.x, p.y, p.w, p.h);
-    ctx.fillStyle = '#5aae44';
-    ctx.fillRect(p.x, p.y, p.w, 14);
-    ctx.fillStyle = 'rgba(255,255,255,0.10)';
-    for (let x = p.x; x < p.x + p.w; x += 42) {
-        ctx.fillRect(x + 8, p.y + 28, 20, 4);
+    ctx.fillStyle = '#c84c0c';
+    px(p.x, p.y, p.w, p.h);
+    ctx.fillStyle = '#ffb05a';
+    px(p.x, p.y, p.w, 10);
+    ctx.fillStyle = '#5c2c0c';
+
+    for (let x = p.x; x < p.x + p.w; x += TILE) {
+        px(x, p.y, 2, p.h);
+    }
+    for (let y = p.y; y < p.y + p.h; y += 20) {
+        px(p.x, y, p.w, 2);
+    }
+
+    ctx.fillStyle = '#8c3408';
+    for (let x = p.x + 10; x < p.x + p.w; x += 48) {
+        px(x, p.y + 28, 20, 6);
     }
 }
 
 function drawBrick(p) {
-    ctx.fillStyle = '#c7793a';
-    ctx.fillRect(p.x, p.y, p.w, p.h);
-    ctx.strokeStyle = '#8a431a';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(p.x, p.y, p.w, p.h);
-    for (let x = p.x + 28; x < p.x + p.w; x += 56) {
-        ctx.beginPath();
-        ctx.moveTo(x, p.y);
-        ctx.lineTo(x, p.y + p.h);
-        ctx.stroke();
+    const blocks = Math.max(1, Math.round(p.w / TILE));
+    for (let i = 0; i < blocks; i++) {
+        drawBrickBlock(p.x + i * TILE, p.y, TILE, p.h);
     }
 }
 
+function drawBrickBlock(x, y, w, h) {
+    ctx.fillStyle = '#c84c0c';
+    px(x, y, w, h);
+    ctx.fillStyle = '#ffb05a';
+    px(x + 3, y + 3, w - 6, 5);
+    ctx.fillStyle = '#5c2c0c';
+    px(x, y, w, 3);
+    px(x, y + h - 3, w, 3);
+    px(x, y, 3, h);
+    px(x + w - 3, y, 3, h);
+    px(x + w / 2 - 1, y + 4, 2, h - 8);
+    px(x + 4, y + h / 2 - 1, w - 8, 2);
+}
+
+function drawQuestionBlocks(p) {
+    const blocks = Math.max(1, Math.round(p.w / TILE));
+    for (let i = 0; i < blocks; i++) {
+        drawQuestionBlock(p.x + i * TILE, p.y, TILE, p.h);
+    }
+}
+
+function drawQuestionBlock(x, y, w, h) {
+    ctx.fillStyle = '#f8b800';
+    px(x, y, w, h);
+    ctx.fillStyle = '#fff060';
+    px(x + 4, y + 4, w - 8, 5);
+    ctx.fillStyle = '#8c5c00';
+    px(x, y, w, 3);
+    px(x, y + h - 3, w, 3);
+    px(x, y, 3, h);
+    px(x + w - 3, y, 3, h);
+    ctx.fillStyle = '#ffffff';
+    px(x + 13, y + 7, 8, 5);
+    px(x + 21, y + 12, 5, 8);
+    px(x + 16, y + 20, 7, 5);
+    px(x + 16, y + 27, 6, 4);
+}
+
 function drawPipe(p) {
-    ctx.fillStyle = '#138a42';
-    ctx.fillRect(p.x, p.y + 18, p.w, p.h - 18);
-    ctx.fillStyle = '#19b35a';
-    ctx.fillRect(p.x - 12, p.y, p.w + 24, 24);
-    ctx.fillStyle = 'rgba(255,255,255,0.25)';
-    ctx.fillRect(p.x + 12, p.y + 24, 13, p.h - 30);
-    ctx.strokeStyle = '#0b5d2a';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(p.x - 12, p.y, p.w + 24, 24);
-    ctx.strokeRect(p.x, p.y + 18, p.w, p.h - 18);
+    ctx.fillStyle = '#005800';
+    px(p.x - 12, p.y, p.w + 24, 28);
+    px(p.x, p.y + 20, p.w, p.h - 20);
+    ctx.fillStyle = '#00a800';
+    px(p.x - 6, p.y + 4, p.w + 12, 18);
+    px(p.x + 6, p.y + 24, p.w - 12, p.h - 28);
+    ctx.fillStyle = '#80d010';
+    px(p.x + 12, p.y + 28, 14, p.h - 34);
+    ctx.fillStyle = '#003800';
+    px(p.x - 12, p.y + 24, p.w + 24, 4);
+    px(p.x + p.w - 10, p.y + 28, 5, p.h - 34);
 }
 
 function drawStep(p) {
-    ctx.fillStyle = '#b7652f';
-    ctx.fillRect(p.x, p.y, p.w, p.h);
-    ctx.strokeStyle = '#6e3618';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(p.x, p.y, p.w, p.h);
+    drawBrick(p);
 }
 
 function drawGoal() {
     if (!isVisible(goal.x, 180)) return;
 
-    ctx.fillStyle = '#f8fbff';
-    ctx.fillRect(goal.x, goal.y, goal.w, goal.h);
-    ctx.fillStyle = '#ef476f';
-    ctx.beginPath();
-    ctx.moveTo(goal.x + goal.w, goal.y + 16);
-    ctx.lineTo(goal.x + goal.w + 115, goal.y + 44);
-    ctx.lineTo(goal.x + goal.w, goal.y + 74);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = '#ffd166';
-    ctx.fillRect(goal.x - 20, goal.y + goal.h, goal.w + 48, 14);
+    ctx.fillStyle = '#ffffff';
+    px(goal.x, goal.y, goal.w, goal.h);
+    ctx.fillStyle = '#d8d8d8';
+    px(goal.x + goal.w - 6, goal.y, 6, goal.h);
+    ctx.fillStyle = '#00a800';
+    px(goal.x + goal.w, goal.y + 24, 112, 28);
+    ctx.fillStyle = '#80d010';
+    px(goal.x + goal.w + 8, goal.y + 30, 82, 8);
+    ctx.fillStyle = '#c84c0c';
+    px(goal.x - 22, goal.y + goal.h, goal.w + 54, 16);
 }
 
 function drawCoins() {
     for (const coin of coins) {
         if (coin.taken || !isVisible(coin.x - coin.r, coin.r * 2)) continue;
-        ctx.fillStyle = '#ffd166';
-        ctx.beginPath();
-        ctx.arc(coin.x, coin.y, coin.r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#c89012';
-        ctx.lineWidth = 3;
-        ctx.stroke();
-        ctx.fillStyle = 'rgba(255,255,255,0.45)';
-        ctx.beginPath();
-        ctx.arc(coin.x - 4, coin.y - 5, 3, 0, Math.PI * 2);
-        ctx.fill();
+        drawPixelCoin(coin.x, coin.y, coin.r);
     }
+}
+
+function drawPixelCoin(x, y, r) {
+    ctx.fillStyle = '#f8d800';
+    px(x - 8, y - 12, 16, 4);
+    px(x - 12, y - 8, 24, 16);
+    px(x - 8, y + 8, 16, 4);
+    ctx.fillStyle = '#fff060';
+    px(x - 4, y - 8, 5, 16);
+    ctx.fillStyle = '#8c5c00';
+    px(x + 8, y - 5, 4, 10);
 }
 
 function drawEnemies() {
@@ -659,27 +724,17 @@ function drawEnemies() {
         const y = foe.alive ? foe.y : foe.y + foe.h - h;
 
         ctx.save();
-        ctx.translate(foe.x + foe.w / 2, y + h / 2);
+        ctx.translate(Math.round(foe.x + foe.w / 2), Math.round(y + h / 2));
         if (foe.vx < 0) ctx.scale(-1, 1);
 
         if (isLoadedImage(imgEnemy)) {
-            drawImageContain(imgEnemy, -foe.w / 2, -h / 2, foe.w, h);
+            drawImageContain(imgEnemy, -foe.w / 2, -h / 2, foe.w, h, true);
         } else {
-            // enemy.png がまだ無い場合のフォールバック表示
-            ctx.fillStyle = '#7b3f1d';
-            ctx.beginPath();
-            ctx.ellipse(0, 2, foe.w / 2, h / 2, 0, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = '#fff';
-            ctx.beginPath();
-            ctx.arc(-10, -6, 5, 0, Math.PI * 2);
-            ctx.arc(10, -6, 5, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = '#111';
-            ctx.beginPath();
-            ctx.arc(-9, -6, 2, 0, Math.PI * 2);
-            ctx.arc(9, -6, 2, 0, Math.PI * 2);
-            ctx.fill();
+            // enemy.png の読み込み待ち・配置ミス確認用。通常は表示されません。
+            ctx.fillStyle = '#111111';
+            px(-foe.w / 2, -h / 2, foe.w, h);
+            ctx.fillStyle = '#ffffff';
+            px(-foe.w / 2 + 5, -h / 2 + 5, foe.w - 10, 6);
         }
         ctx.restore();
     }
@@ -688,44 +743,69 @@ function drawEnemies() {
 function drawHero() {
     if (hero.invincible > 0 && Math.floor(hero.invincible / 6) % 2 === 0) return;
 
-    const moving = Math.abs(hero.vx) > 0.4;
-    const fallback = moving && isLoadedImage(imgMove) ? imgMove : imgStop;
-    const currentImg = selectedPlayerImage || fallback;
+    const currentImg = getHeroFrame();
 
     ctx.save();
-    ctx.translate(hero.x + hero.w / 2, hero.y + hero.h / 2);
+    ctx.translate(Math.round(hero.x + hero.w / 2), Math.round(hero.y + hero.h / 2));
     if (hero.facing < 0) ctx.scale(-1, 1);
 
-    ctx.shadowColor = 'rgba(0,0,0,0.25)';
-    ctx.shadowBlur = 8;
-    ctx.shadowOffsetY = 4;
-
     if (isLoadedImage(currentImg)) {
-        drawImageContain(currentImg, -hero.w / 2, -hero.h / 2, hero.w, hero.h);
+        drawImageContain(currentImg, -hero.w / 2, -hero.h / 2, hero.w, hero.h, true);
     } else {
-        ctx.fillStyle = '#ef476f';
-        ctx.fillRect(-hero.w / 2, -hero.h / 2, hero.w, hero.h);
+        drawFallbackHero();
     }
 
     ctx.restore();
 }
 
-function drawImageContain(img, x, y, w, h) {
+function getHeroFrame() {
+    const moving = Math.abs(hero.vx) > 0.4;
+
+    if (!hero.grounded && isLoadedImage(imgMove)) {
+        return imgMove;
+    }
+
+    if (moving && isLoadedImage(imgMove) && isLoadedImage(imgStop)) {
+        const frame = Math.floor(hero.animation / 7) % 2;
+        return frame === 0 ? imgStop : imgMove;
+    }
+
+    if (moving && isLoadedImage(imgMove)) return imgMove;
+    return imgStop;
+}
+
+function drawFallbackHero() {
+    ctx.fillStyle = '#d82800';
+    px(-18, -35, 36, 18);
+    ctx.fillStyle = '#f8c090';
+    px(-16, -17, 32, 24);
+    ctx.fillStyle = '#0058f8';
+    px(-18, 7, 36, 32);
+    ctx.fillStyle = '#ffffff';
+    px(5, -9, 6, 6);
+}
+
+function drawImageContain(img, x, y, w, h, smoothImage = true) {
     if (!isLoadedImage(img)) return;
 
     const scale = Math.min(w / img.naturalWidth, h / img.naturalHeight);
-    const drawW = img.naturalWidth * scale;
-    const drawH = img.naturalHeight * scale;
-    const drawX = x + (w - drawW) / 2;
-    const drawY = y + (h - drawH) / 2;
+    const drawW = Math.round(img.naturalWidth * scale);
+    const drawH = Math.round(img.naturalHeight * scale);
+    const drawX = Math.round(x + (w - drawW) / 2);
+    const drawY = Math.round(y + (h - drawH) / 2);
 
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
+    ctx.imageSmoothingEnabled = smoothImage;
+    if (smoothImage) ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(img, drawX, drawY, drawW, drawH);
+    ctx.imageSmoothingEnabled = false;
 }
 
 function isLoadedImage(img) {
     return img && img.complete && img.naturalWidth > 0;
+}
+
+function px(x, y, w, h) {
+    ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
 }
 
 function rectsOverlap(a, b) {
@@ -790,24 +870,11 @@ for (const button of document.querySelectorAll('.touch-button')) {
     });
 }
 
-imageInput.addEventListener('change', (e) => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-
-    if (selectedObjectUrl) URL.revokeObjectURL(selectedObjectUrl);
-    selectedObjectUrl = URL.createObjectURL(file);
-
-    const img = new Image();
-    img.onload = () => {
-        selectedPlayerImage = img;
-    };
-    img.src = selectedObjectUrl;
-});
-
 startButton.addEventListener('click', startGame);
 retryButton.addEventListener('click', startGame);
 window.addEventListener('resize', resizeCanvasForHighDpi);
 
+hideDeprecatedPlayerPicker();
 resizeCanvasForHighDpi();
 updateHud();
 draw();

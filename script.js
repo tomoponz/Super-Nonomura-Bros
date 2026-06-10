@@ -8,18 +8,32 @@ let player;
 let isGameOver = false;
 let loopCheckInterval;
 let ytReady = false;
+let ytApiReady = false;
+let bgmRequested = false;
+let bgmStartSeconds = 4;
+let lastBgmAttempt = 0;
 
 const VIDEO_ID = 'vHbkhn2AI8g';
 
 function onYouTubeIframeAPIReady() {
+    ytApiReady = true;
+    createBgmPlayer();
+}
+
+function createBgmPlayer() {
+    if (player || !ytApiReady || typeof YT === 'undefined' || !YT.Player) return;
+
     player = new YT.Player('youtube-player', {
-        height: '0',
-        width: '0',
+        height: '1',
+        width: '1',
         videoId: VIDEO_ID,
         playerVars: {
+            autoplay: 0,
             playsinline: 1,
             controls: 0,
-            disablekb: 1
+            disablekb: 1,
+            rel: 0,
+            origin: location.origin
         },
         events: {
             onReady: onPlayerReady,
@@ -31,6 +45,14 @@ function onYouTubeIframeAPIReady() {
 function onPlayerReady() {
     ytReady = true;
     console.log('BGMの準備が完了しました');
+
+    if (player && typeof player.setVolume === 'function') {
+        player.setVolume(75);
+    }
+
+    if (bgmRequested) {
+        startBgm();
+    }
 }
 
 function onPlayerStateChange(event) {
@@ -56,20 +78,47 @@ function startLoopCheck() {
 }
 
 function startBgm() {
-    if (!ytReady || !player || typeof player.seekTo !== 'function') return;
+    bgmRequested = true;
+    bgmStartSeconds = 4;
     isGameOver = false;
-    player.seekTo(4, true);
-    player.playVideo();
+    playBgmFrom(4);
 }
 
 function playGameOverBgm() {
-    if (!ytReady || !player || typeof player.seekTo !== 'function') return;
+    bgmRequested = true;
+    bgmStartSeconds = 84;
     isGameOver = true;
-    player.seekTo(84, true);
-    player.playVideo();
+    playBgmFrom(84);
+}
+
+function playBgmFrom(seconds) {
+    createBgmPlayer();
+
+    if (!ytReady || !player || typeof player.seekTo !== 'function') return;
+
+    const now = performance.now();
+    if (now - lastBgmAttempt < 180) return;
+    lastBgmAttempt = now;
+
+    try {
+        if (typeof player.unMute === 'function') player.unMute();
+        if (typeof player.setVolume === 'function') player.setVolume(75);
+        player.seekTo(seconds, true);
+        player.playVideo();
+    } catch (error) {
+        console.warn('BGM再生がブラウザにブロックされました', error);
+    }
+}
+
+function resumeBgmFromUserGesture() {
+    // LINE内ブラウザなどは、初回タップ以外で再生許可が下りることがあります。
+    // ゲーム開始後、画面や操作ボタンを触ったタイミングでも再試行します。
+    if (!gameStarted || gameEnded || !bgmRequested) return;
+    playBgmFrom(bgmStartSeconds);
 }
 
 function stopBgm() {
+    bgmRequested = false;
     if (!ytReady || !player || typeof player.pauseVideo !== 'function') return;
     player.pauseVideo();
 }
@@ -96,6 +145,7 @@ const H = 540;
 const WORLD_WIDTH = 6500;
 const FLOOR_Y = 470;
 const TILE = 32;
+const GROUND_DEPTH = TILE * 2;
 
 const GRAVITY = 0.75;
 const MAX_FALL = 18;
@@ -138,8 +188,8 @@ const state = {
 const hero = {
     x: 80,
     y: 330,
-    w: 58,
-    h: 70,
+    w: 48,
+    h: 64,
     vx: 0,
     vy: 0,
     grounded: false,
@@ -152,12 +202,12 @@ const hero = {
 
 // ドット風の横スクロールコース。既存素材を使わず、矩形タイルだけでレトロ感を出しています。
 const platforms = [
-    { x: 0, y: FLOOR_Y, w: 760, h: 70, kind: 'ground' },
-    { x: 850, y: FLOOR_Y, w: 820, h: 70, kind: 'ground' },
-    { x: 1780, y: FLOOR_Y, w: 700, h: 70, kind: 'ground' },
-    { x: 2580, y: FLOOR_Y, w: 920, h: 70, kind: 'ground' },
-    { x: 3630, y: FLOOR_Y, w: 760, h: 70, kind: 'ground' },
-    { x: 4510, y: FLOOR_Y, w: 1990, h: 70, kind: 'ground' },
+    { x: 0, y: FLOOR_Y, w: 760, h: GROUND_DEPTH, kind: 'ground' },
+    { x: 850, y: FLOOR_Y, w: 820, h: GROUND_DEPTH, kind: 'ground' },
+    { x: 1780, y: FLOOR_Y, w: 700, h: GROUND_DEPTH, kind: 'ground' },
+    { x: 2580, y: FLOOR_Y, w: 920, h: GROUND_DEPTH, kind: 'ground' },
+    { x: 3630, y: FLOOR_Y, w: 760, h: GROUND_DEPTH, kind: 'ground' },
+    { x: 4510, y: FLOOR_Y, w: 1990, h: GROUND_DEPTH, kind: 'ground' },
 
     { x: 384, y: 374, w: 96, h: 32, kind: 'brick' },
     { x: 512, y: 310, w: 64, h: 32, kind: 'question' },
@@ -228,7 +278,26 @@ function coinArc(startX, y, count) {
 }
 
 function enemy(x, y, minX, maxX, speed) {
-    return { startX: x, x, y, w: 46, h: 46, vx: speed, startVx: speed, minX, maxX, alive: true, squish: 0 };
+    // w/h は当たり判定。drawW/drawH は見た目の大きさ。
+    // enemy.png を大きく見せつつ、ぶつかり判定は少し小さめにする。
+    const hitW = 34;
+    const hitH = 34;
+    const hitY = y + 46 - hitH;
+    return {
+        startX: x,
+        x,
+        y: hitY,
+        w: hitW,
+        h: hitH,
+        drawW: 72,
+        drawH: 66,
+        vx: speed,
+        startVx: speed,
+        minX,
+        maxX,
+        alive: true,
+        squish: 0
+    };
 }
 
 function resizeCanvasForHighDpi() {
@@ -270,7 +339,7 @@ function resetGame() {
     state.elapsed = 0;
     state.checkpointX = 80;
 
-    respawnHero(80, 330);
+    respawnHero(80, 340);
     cameraX = 0;
 
     for (const coin of coins) coin.taken = false;
@@ -422,9 +491,10 @@ function moveHeroX(dx) {
     hero.x = clamp(hero.x, 0, WORLD_WIDTH - hero.w);
 
     for (const p of platforms) {
-        if (!rectsOverlap(hero, p)) continue;
-        if (dx > 0) hero.x = p.x - hero.w;
-        else if (dx < 0) hero.x = p.x + p.w;
+        const hitbox = getPlatformHitbox(p);
+        if (!rectsOverlap(hero, hitbox)) continue;
+        if (dx > 0) hero.x = hitbox.x - hero.w;
+        else if (dx < 0) hero.x = hitbox.x + hitbox.w;
         hero.vx = 0;
     }
 }
@@ -434,13 +504,14 @@ function moveHeroY(dy) {
     hero.grounded = false;
 
     for (const p of platforms) {
-        if (!rectsOverlap(hero, p)) continue;
+        const hitbox = getPlatformHitbox(p);
+        if (!rectsOverlap(hero, hitbox)) continue;
         if (dy > 0) {
-            hero.y = p.y - hero.h;
+            hero.y = hitbox.y - hero.h;
             hero.vy = 0;
             hero.grounded = true;
         } else if (dy < 0) {
-            hero.y = p.y + p.h;
+            hero.y = hitbox.y + hitbox.h;
             hero.vy = 0;
         }
     }
@@ -476,11 +547,12 @@ function checkEnemyHits() {
     if (hero.invincible > 0) return;
 
     for (const foe of enemies) {
-        if (!foe.alive || !rectsOverlap(hero, foe)) continue;
+        const hitbox = getEnemyHitbox(foe);
+        if (!foe.alive || !rectsOverlap(hero, hitbox)) continue;
 
         const heroBottom = hero.y + hero.h;
-        const enemyTop = foe.y + 10;
-        const isStomp = hero.vy > 0 && heroBottom - enemyTop < 24;
+        const enemyTop = hitbox.y;
+        const isStomp = hero.vy > 0 && heroBottom - enemyTop < 22;
 
         if (isStomp) {
             foe.alive = false;
@@ -510,7 +582,7 @@ function loseLife(message) {
 
     state.elapsed = 0;
     state.time = 300;
-    respawnHero(state.checkpointX, 330);
+    respawnHero(state.checkpointX, 340);
     cameraX = clamp(hero.x + hero.w / 2 - W * 0.42, 0, WORLD_WIDTH - W);
 }
 
@@ -717,24 +789,25 @@ function drawPixelCoin(x, y, r) {
 
 function drawEnemies() {
     for (const foe of enemies) {
-        if (!isVisible(foe.x, foe.w)) continue;
+        const drawW = foe.drawW || foe.w;
+        if (!isVisible(foe.x - (drawW - foe.w) / 2, drawW)) continue;
         if (!foe.alive && foe.squish > 18) continue;
 
-        const h = foe.alive ? foe.h : Math.max(10, foe.h * 0.28);
-        const y = foe.alive ? foe.y : foe.y + foe.h - h;
+        const drawH = foe.alive ? (foe.drawH || foe.h) : Math.max(12, (foe.drawH || foe.h) * 0.28);
+        const drawY = foe.y + foe.h - drawH;
 
         ctx.save();
-        ctx.translate(Math.round(foe.x + foe.w / 2), Math.round(y + h / 2));
+        ctx.translate(Math.round(foe.x + foe.w / 2), Math.round(drawY + drawH / 2));
         if (foe.vx < 0) ctx.scale(-1, 1);
 
         if (isLoadedImage(imgEnemy)) {
-            drawImageContain(imgEnemy, -foe.w / 2, -h / 2, foe.w, h, true);
+            drawImageContain(imgEnemy, -drawW / 2, -drawH / 2, drawW, drawH, true);
         } else {
             // enemy.png の読み込み待ち・配置ミス確認用。通常は表示されません。
             ctx.fillStyle = '#111111';
-            px(-foe.w / 2, -h / 2, foe.w, h);
+            px(-drawW / 2, -drawH / 2, drawW, drawH);
             ctx.fillStyle = '#ffffff';
-            px(-foe.w / 2 + 5, -h / 2 + 5, foe.w - 10, 6);
+            px(-drawW / 2 + 8, -drawH / 2 + 8, drawW - 16, 7);
         }
         ctx.restore();
     }
@@ -808,6 +881,28 @@ function px(x, y, w, h) {
     ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
 }
 
+function getPlatformHitbox(p) {
+    if (p.kind === 'pipe') {
+        // drawPipe() は上フチを左右に12px広げて描いているので、
+        // 当たり判定も見た目に合わせる。これでドカンの端にめり込みにくくなる。
+        return { x: p.x - 12, y: p.y, w: p.w + 24, h: p.h };
+    }
+    return p;
+}
+
+function getEnemyHitbox(foe) {
+    // enemy.png は大きく描くが、理不尽に当たらないよう判定はさらに内側にする。
+    const insetX = 4;
+    const insetTop = 3;
+    const insetBottom = 2;
+    return {
+        x: foe.x + insetX,
+        y: foe.y + insetTop,
+        w: foe.w - insetX * 2,
+        h: foe.h - insetTop - insetBottom
+    };
+}
+
 function rectsOverlap(a, b) {
     return a.x < b.x + b.w &&
            a.x + a.w > b.x &&
@@ -869,6 +964,9 @@ for (const button of document.querySelectorAll('.touch-button')) {
         setTouch(key, false, button);
     });
 }
+
+document.addEventListener('pointerdown', resumeBgmFromUserGesture, { passive: true });
+document.addEventListener('touchend', resumeBgmFromUserGesture, { passive: true });
 
 startButton.addEventListener('click', startGame);
 retryButton.addEventListener('click', startGame);

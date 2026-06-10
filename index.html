@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#74b9ff" />
+    <meta name="theme-color" content="#5c94fc" />
     <title>スーパー野々村ブラザーズ</title>
     <link rel="stylesheet" href="style.css" />
 </head>
@@ -15,26 +15,21 @@
             <div id="hud" aria-live="polite">
                 <span id="hud-title">SUPER NONOMURA BROS</span>
                 <span>COIN <strong id="coin-count">0</strong></span>
-                <span>LIFE <strong id="life-count">3</strong></span>
+                <span>LIFE <strong id="life-count">1</strong></span>
                 <span>TIME <strong id="time-count">300</strong></span>
             </div>
 
             <div id="start-screen" class="overlay">
                 <div class="panel">
-                    <p class="kicker">Original horizontal scroll course</p>
+                    <p class="kicker">RETRO DOT SCROLL ACTION</p>
                     <h1>スーパー野々村ブラザーズ</h1>
                     <p>
                         スマホでは左下の左右ボタン、右下のジャンプボタンで操作できます。<br />
                         PCでは ← → / A D で移動、↑ / W / Space でジャンプです。
                     </p>
-                    <label class="file-button">
-                        操作キャラ画像を選ぶ
-                        <input id="player-image-input" type="file" accept="image/*" />
-                    </label>
                     <button id="start-button" type="button">ゲームスタート</button>
                     <p class="small-note">
-                        画像は <code>assets/images/player/player_icon.png</code> を置くと固定差し替えできます。<br />
-                        敵画像は <code>assets/images/player/enemy.png</code> を使います。
+                        LINE内ブラウザでBGMが鳴らない場合は、スタート後に画面をもう一度タップしてください。
                     </p>
                 </div>
             </div>
@@ -56,17 +51,9 @@
                 <button class="touch-button jump-button" data-key="jump" aria-label="ジャンプ">JUMP</button>
             </div>
         </section>
-
-        <section id="help-card">
-            <h2>GitHub Pages 用メモ</h2>
-            <p>
-                このフォルダをそのままGitHubに置き、Pagesを有効化すればブラウザで遊べます。
-                BGMは元のYouTube IFrame API方式を残しています。
-            </p>
-        </section>
     </main>
 
-    <!-- 元のコードで動いていたYouTube BGM用。画面には表示しません。 -->
+    <!-- YouTube BGM用。LINE内ブラウザ対策のため、完全な0px非表示にはしない。 -->
     <div id="youtube-player" aria-hidden="true"></div>
     <script src="https://www.youtube.com/iframe_api"></script>
     <script src="script.js"></script>

@@ -1,7 +1,6 @@
 :root {
-    --sky-top: #70c5ff;
-    --sky-bottom: #b9edff;
-    --panel: rgba(18, 24, 38, 0.88);
+    --sky-top: #5c94fc;
+    --panel: rgba(18, 24, 38, 0.9);
     --text: #f8fbff;
     --accent: #ffd166;
     --danger: #ef476f;
@@ -15,8 +14,9 @@
 html,
 body {
     margin: 0;
+    width: 100%;
     min-height: 100%;
-    background: #182235;
+    background: #0f1728;
     color: var(--text);
     font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     overscroll-behavior: none;
@@ -24,33 +24,40 @@ body {
 }
 
 body {
+    min-height: 100dvh;
     display: flex;
     justify-content: center;
-    padding: env(safe-area-inset-top) 12px env(safe-area-inset-bottom);
+    align-items: center;
+    overflow: hidden;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
 #game-shell {
-    width: min(100%, 1080px);
+    width: 100%;
+    height: 100dvh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
 #game-container {
     position: relative;
-    width: 100%;
+    width: min(100vw, calc(100dvh * 16 / 9));
     max-width: 1080px;
     aspect-ratio: 16 / 9;
-    margin: 10px auto 0;
     overflow: hidden;
-    border-radius: 18px;
-    background: linear-gradient(var(--sky-top), var(--sky-bottom));
+    border-radius: 12px;
+    background: var(--sky-top);
     box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
     user-select: none;
+    touch-action: none;
 }
 
 canvas {
     display: block;
     width: 100%;
     height: 100%;
-    background: linear-gradient(var(--sky-top), var(--sky-bottom));
+    background: var(--sky-top);
     image-rendering: auto;
 }
 
@@ -66,9 +73,9 @@ canvas {
     gap: 10px;
     padding: 10px clamp(10px, 2vw, 18px);
     background: linear-gradient(rgba(0, 0, 0, 0.32), rgba(0, 0, 0, 0));
-    font-weight: 800;
+    font-weight: 900;
     letter-spacing: 0.03em;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.45);
     pointer-events: none;
 }
 
@@ -93,9 +100,9 @@ canvas {
 
 .panel {
     width: min(92%, 560px);
-    padding: clamp(20px, 4vw, 34px);
+    padding: clamp(18px, 4vw, 32px);
     border: 1px solid rgba(255, 255, 255, 0.16);
-    border-radius: 22px;
+    border-radius: 18px;
     background: var(--panel);
     text-align: center;
     box-shadow: 0 16px 50px rgba(0, 0, 0, 0.35);
@@ -104,7 +111,7 @@ canvas {
 .panel h1,
 .panel h2 {
     margin: 6px 0 10px;
-    font-size: clamp(30px, 7vw, 56px);
+    font-size: clamp(28px, 7vw, 56px);
     line-height: 1.05;
 }
 
@@ -115,57 +122,35 @@ canvas {
 
 .kicker {
     color: var(--accent);
-    font-weight: 800;
+    font-weight: 900;
     letter-spacing: 0.08em;
     text-transform: uppercase;
 }
 
-button,
-.file-button {
+button {
     appearance: none;
     border: 0;
     border-radius: 999px;
     cursor: pointer;
     font: inherit;
-    font-weight: 800;
+    font-weight: 900;
 }
 
 #start-button,
-#retry-button,
-.file-button {
+#retry-button {
     display: inline-flex;
     justify-content: center;
     align-items: center;
     min-width: 220px;
     margin: 8px 6px 0;
     padding: 14px 22px;
-}
-
-#start-button,
-#retry-button {
     background: var(--accent);
     color: #2c2200;
-}
-
-.file-button {
-    background: #ffffff;
-    color: #172033;
-}
-
-.file-button input {
-    display: none;
 }
 
 .small-note {
     color: rgba(255, 255, 255, 0.78);
     font-size: 13px;
-}
-
-.small-note code,
-#help-card code {
-    padding: 2px 5px;
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.14);
 }
 
 #touch-controls {
@@ -175,32 +160,32 @@ button,
     display: flex;
     justify-content: space-between;
     align-items: flex-end;
-    padding: 0 clamp(10px, 3vw, 22px) clamp(10px, 3vw, 22px);
+    padding: 0 clamp(12px, 3vw, 26px) clamp(12px, 3vw, 26px);
     pointer-events: none;
 }
 
 .touch-left-group {
     display: flex;
-    gap: 10px;
+    gap: 12px;
 }
 
 .touch-button {
-    width: clamp(58px, 13vw, 86px);
-    height: clamp(58px, 13vw, 86px);
-    border: 2px solid rgba(255, 255, 255, 0.6);
-    background: rgba(13, 21, 36, 0.48);
+    width: clamp(62px, 12vw, 92px);
+    height: clamp(62px, 12vw, 92px);
+    border: 2px solid rgba(255, 255, 255, 0.65);
+    background: rgba(13, 21, 36, 0.5);
     color: #fff;
-    font-size: clamp(22px, 6vw, 34px);
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
+    font-size: clamp(23px, 5vw, 36px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.24);
     pointer-events: auto;
     touch-action: none;
 }
 
 .jump-button {
-    width: clamp(76px, 18vw, 112px);
-    height: clamp(76px, 18vw, 112px);
-    background: rgba(239, 71, 111, 0.72);
-    font-size: clamp(14px, 4vw, 22px);
+    width: clamp(86px, 17vw, 126px);
+    height: clamp(86px, 17vw, 126px);
+    background: rgba(239, 71, 111, 0.76);
+    font-size: clamp(14px, 3.4vw, 22px);
 }
 
 .touch-button:active,
@@ -209,46 +194,40 @@ button,
     filter: brightness(1.15);
 }
 
-#help-card {
-    max-width: 920px;
-    margin: 16px auto 0;
-    padding: 16px 18px;
-    border-radius: 16px;
-    background: rgba(255, 255, 255, 0.08);
-    color: rgba(255, 255, 255, 0.9);
-}
-
-#help-card h2 {
-    margin: 0 0 8px;
-    font-size: 18px;
-}
-
-#help-card p {
-    margin: 0;
-    line-height: 1.7;
-}
-
-/* YouTubeプレイヤーは完全に隠す。元のBGM API用なので消さない。 */
+/* LINE内ブラウザ対策。0px・display:none・画面外配置だとYouTubeが再生されないことがある。 */
 #youtube-player {
     position: fixed;
-    width: 0;
-    height: 0;
-    left: -9999px;
-    top: -9999px;
-    overflow: hidden;
-    opacity: 0;
+    width: 1px;
+    height: 1px;
+    left: 0;
+    top: 0;
+    opacity: 0.01;
     pointer-events: none;
+    z-index: -1;
 }
 
-@media (max-width: 720px) {
+@media (orientation: portrait) {
     body {
-        padding-left: 6px;
-        padding-right: 6px;
+        align-items: flex-start;
+        padding: max(6px, env(safe-area-inset-top)) 6px max(6px, env(safe-area-inset-bottom));
+    }
+
+    #game-shell {
+        align-items: flex-start;
+    }
+
+    #game-container {
+        width: 100%;
+        max-width: none;
+        aspect-ratio: 16 / 10;
+        margin-top: 4px;
+        border-radius: 10px;
     }
 
     #hud {
-        font-size: 12px;
+        font-size: 11px;
         gap: 6px;
+        padding: 8px 8px;
     }
 
     #hud-title {
@@ -257,6 +236,61 @@ button,
 
     .panel {
         width: min(96%, 540px);
+        padding: 16px;
+    }
+
+    .panel h1,
+    .panel h2 {
+        font-size: clamp(25px, 8vw, 42px);
+    }
+
+    .panel p {
+        font-size: 13px;
+        line-height: 1.6;
+    }
+
+    #touch-controls {
+        padding: 0 16px max(18px, calc(env(safe-area-inset-bottom) + 12px));
+    }
+
+    .touch-left-group {
+        gap: 14px;
+    }
+
+    .touch-button {
+        width: clamp(68px, 19vw, 88px);
+        height: clamp(68px, 19vw, 88px);
+        font-size: clamp(24px, 7vw, 34px);
+    }
+
+    .jump-button {
+        width: clamp(92px, 25vw, 122px);
+        height: clamp(92px, 25vw, 122px);
+    }
+}
+
+@media (orientation: landscape) and (max-height: 520px) {
+    #game-container {
+        height: 100dvh;
+        width: min(100vw, calc(100dvh * 16 / 9));
+        border-radius: 0;
+    }
+
+    .panel {
+        padding: 14px 20px;
+    }
+
+    .panel p {
+        margin: 6px 0;
+        font-size: 13px;
+    }
+
+    .small-note {
+        display: none;
+    }
+
+    #touch-controls {
+        padding-bottom: max(10px, env(safe-area-inset-bottom));
     }
 }
 

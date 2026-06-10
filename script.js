@@ -127,6 +127,7 @@ function stopBgm() {
 // 2. ゲームの描画・キャラクター制御セットアップ
 // ==========================================
 const canvas = document.getElementById('gameCanvas');
+const gameContainer = document.getElementById('game-container');
 const ctx = canvas.getContext('2d');
 
 const hudCoins = document.getElementById('coin-count');
@@ -140,7 +141,9 @@ const resultKicker = document.getElementById('result-kicker');
 const startButton = document.getElementById('start-button');
 const retryButton = document.getElementById('retry-button');
 
-const W = 960;
+const BASE_VIEW_W = 960;
+const MIN_PORTRAIT_VIEW_W = 360;
+let W = BASE_VIEW_W;
 const H = 540;
 const WORLD_WIDTH = 6500;
 const FLOOR_Y = 470;
@@ -306,6 +309,15 @@ function enemy(x, y, minX, maxX, speed) {
 
 function resizeCanvasForHighDpi() {
     dpr = Math.min(window.devicePixelRatio || 1, 3);
+
+    // スマホ縦画面では、960px幅の世界をそのまま縮小表示するとキャラが小さすぎる。
+    // CSS上の表示比率に合わせて、見える横幅だけを狭めることで、ゲーム画面全体を拡大して見せる。
+    const rect = gameContainer.getBoundingClientRect();
+    const cssW = Math.max(1, rect.width || window.innerWidth || BASE_VIEW_W);
+    const cssH = Math.max(1, rect.height || window.innerHeight || H);
+    const cssAspect = cssW / cssH;
+    W = Math.round(clamp(H * cssAspect, MIN_PORTRAIT_VIEW_W, BASE_VIEW_W));
+
     const targetW = Math.round(W * dpr);
     const targetH = Math.round(H * dpr);
 
@@ -317,6 +329,10 @@ function resizeCanvasForHighDpi() {
     canvas.style.width = '100%';
     canvas.style.height = '100%';
     prepareCanvasContext();
+
+    if (gameStarted) {
+        cameraX = clamp(hero.x + hero.w / 2 - W * 0.42, 0, WORLD_WIDTH - W);
+    }
 }
 
 function prepareCanvasContext() {

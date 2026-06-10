@@ -156,6 +156,58 @@ button {
     font-size: 13px;
 }
 
+#result-screen {
+    overflow: hidden;
+}
+
+#result-screen .panel {
+    position: relative;
+    z-index: 2;
+}
+
+#result-visual {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0;
+    background-position: center;
+}
+
+#result-screen.result-lose #result-visual {
+    opacity: 0.96;
+    background-repeat: no-repeat;
+    background-size: min(98vw, 860px) auto;
+    animation: loseImpact 0.42s cubic-bezier(.18, 1.35, .24, 1) both;
+}
+
+#result-screen.result-win #result-visual {
+    opacity: 0.72;
+    background-repeat: repeat;
+    background-size: clamp(92px, 18vw, 164px) auto;
+    background-position: 0 0;
+    animation: winWallpaper 7s linear infinite;
+}
+
+#result-screen.result-lose .panel {
+    background: rgba(18, 24, 38, 0.78);
+}
+
+#result-screen.result-win .panel {
+    background: rgba(18, 24, 38, 0.84);
+}
+
+@keyframes loseImpact {
+    0% { transform: scale(0.16) rotate(-5deg); filter: blur(3px); opacity: 0; }
+    60% { transform: scale(1.08) rotate(1deg); filter: blur(0); opacity: 1; }
+    100% { transform: scale(1); filter: blur(0); opacity: 0.96; }
+}
+
+@keyframes winWallpaper {
+    from { background-position: 0 0; }
+    to { background-position: 164px 164px; }
+}
+
 #touch-controls {
     position: absolute;
     inset: auto 0 0 0;
@@ -354,18 +406,6 @@ button {
 }
 
 /* 外部ブラウザ誘導とBGM安定化後の調整 */
-.secondary-button {
-    display: inline-flex;
-    justify-content: center;
-    align-items: center;
-    min-width: 180px;
-    margin: 10px 6px 0;
-    padding: 12px 18px;
-    border: 2px solid rgba(255, 255, 255, 0.42);
-    background: rgba(255, 255, 255, 0.10);
-    color: #fff;
-}
-
 .browser-panel h2 {
     font-size: clamp(26px, 6vw, 44px);
 }

@@ -150,9 +150,9 @@ const resultMessage = document.getElementById('result-message');
 const resultKicker = document.getElementById('result-kicker');
 const startButton = document.getElementById('start-button');
 const retryButton = document.getElementById('retry-button');
+const resultVisual = document.getElementById('result-visual');
 const browserRedirectScreen = document.getElementById('browser-redirect-screen');
 const openBrowserButton = document.getElementById('open-browser-button');
-const continueLineButton = document.getElementById('continue-line-button');
 
 const BASE_VIEW_W = 960;
 const MIN_PORTRAIT_VIEW_W = 360;
@@ -171,6 +171,7 @@ const MAX_RUN = 7.25;
 const JUMP_SPEED = -15.9;
 const COYOTE_FRAMES = 7;
 const JUMP_BUFFER_FRAMES = 8;
+const BLOCK_BUMP_FRAMES = 12;
 
 const keys = new Set();
 const touch = { left: false, right: false, jump: false };
@@ -193,6 +194,18 @@ imgMove.src = 'assets/images/player/player_move.png';
 
 const imgEnemy = new Image();
 imgEnemy.src = 'assets/images/player/enemy.png';
+
+const imgOkane = new Image();
+imgOkane.src = 'assets/images/player/okane.png';
+
+const imgWin = new Image();
+imgWin.src = 'assets/images/player/win.png';
+
+const imgLose = new Image();
+loadImageWithFallback(imgLose, [
+    'assets/images/player/lose.png',
+    'assets/images/player/lose.jpg'
+]);
 
 const state = {
     coins: 0,
@@ -221,9 +234,8 @@ const hero = {
     animation: 0,
 };
 
-// 固定サイズのブロックを並べる横スクロールコース。1ブロックを引き伸ばさずに描画します。
+// 固定サイズブロックを並べる横スクロールコース。ブロック1個を引き伸ばさず、個別オブジェクトとして扱います。
 const platforms = [
-    // すべてTILE単位で配置。1ブロックを引き伸ばさず、同じ大きさのブロックを並べて描画します。
     { x: TILE * 0,   y: FLOOR_Y, w: TILE * 24, h: GROUND_DEPTH, kind: 'ground' },
     { x: TILE * 27,  y: FLOOR_Y, w: TILE * 25, h: GROUND_DEPTH, kind: 'ground' },
     { x: TILE * 56,  y: FLOOR_Y, w: TILE * 22, h: GROUND_DEPTH, kind: 'ground' },
@@ -231,47 +243,73 @@ const platforms = [
     { x: TILE * 114, y: FLOOR_Y, w: TILE * 24, h: GROUND_DEPTH, kind: 'ground' },
     { x: TILE * 141, y: FLOOR_Y, w: TILE * 62, h: GROUND_DEPTH, kind: 'ground' },
 
-    { x: TILE * 12,  y: FLOOR_Y - TILE * 3, w: TILE * 3, h: TILE, kind: 'brick' },
-    { x: TILE * 16,  y: FLOOR_Y - TILE * 5, w: TILE * 2, h: TILE, kind: 'question' },
-    { x: TILE * 18,  y: FLOOR_Y - TILE * 5, w: TILE * 3, h: TILE, kind: 'brick' },
-    { x: TILE * 30,  y: FLOOR_Y - TILE * 2, w: TILE * 5, h: TILE, kind: 'brick' },
-    { x: TILE * 37,  y: FLOOR_Y - TILE * 4, w: TILE * 2, h: TILE, kind: 'question' },
-    { x: TILE * 39,  y: FLOOR_Y - TILE * 4, w: TILE * 5, h: TILE, kind: 'brick' },
-    { x: TILE * 45,  y: FLOOR_Y - TILE * 6, w: TILE * 4, h: TILE, kind: 'brick' },
-    { x: TILE * 59,  y: FLOOR_Y - TILE * 3, w: TILE * 5, h: TILE, kind: 'brick' },
-    { x: TILE * 67,  y: FLOOR_Y - TILE * 5, w: TILE * 6, h: TILE, kind: 'brick' },
     { x: TILE * 84,  y: FLOOR_Y - TILE * 2, w: TILE * 3, h: TILE * 2, kind: 'pipe' },
     { x: TILE * 94,  y: FLOOR_Y - TILE * 4, w: TILE * 4, h: TILE * 4, kind: 'pipe' },
-    { x: TILE * 102, y: FLOOR_Y - TILE * 6, w: TILE * 6, h: TILE, kind: 'brick' },
-    { x: TILE * 117, y: FLOOR_Y - TILE * 2, w: TILE * 5, h: TILE, kind: 'brick' },
-    { x: TILE * 124, y: FLOOR_Y - TILE * 4, w: TILE * 6, h: TILE, kind: 'question' },
 
     { x: TILE * 145, y: FLOOR_Y - TILE * 2, w: TILE * 3, h: TILE * 2, kind: 'step' },
     { x: TILE * 148, y: FLOOR_Y - TILE * 4, w: TILE * 3, h: TILE * 4, kind: 'step' },
     { x: TILE * 151, y: FLOOR_Y - TILE * 6, w: TILE * 3, h: TILE * 6, kind: 'step' },
-    { x: TILE * 157, y: FLOOR_Y - TILE * 4, w: TILE * 8, h: TILE, kind: 'brick' },
     { x: TILE * 168, y: FLOOR_Y - TILE * 2, w: TILE * 3, h: TILE * 2, kind: 'step' },
     { x: TILE * 171, y: FLOOR_Y - TILE * 4, w: TILE * 3, h: TILE * 4, kind: 'step' },
     { x: TILE * 174, y: FLOOR_Y - TILE * 6, w: TILE * 3, h: TILE * 6, kind: 'step' },
     { x: TILE * 177, y: FLOOR_Y - TILE * 8, w: TILE * 3, h: TILE * 8, kind: 'step' },
 ];
+
+const blocks = [
+    ...blockLine(11, 4, 3, 'brick'),
+    block(16, 4, 'question'),
+    block(17, 4, 'brick'),
+    block(18, 4, 'question'),
+    block(19, 4, 'brick'),
+    block(17, 8, 'brick'),
+
+    ...blockLine(31, 4, 2, 'brick'),
+    block(33, 4, 'question'),
+    block(34, 4, 'brick'),
+    block(38, 5, 'question'),
+    ...blockLine(40, 5, 4, 'brick'),
+    block(45, 7, 'question'),
+
+    ...blockLine(60, 4, 4, 'brick'),
+    block(64, 4, 'question'),
+    ...blockLine(68, 6, 5, 'brick'),
+    block(73, 6, 'question'),
+
+    block(88, 5, 'question'),
+    ...blockLine(103, 7, 3, 'brick'),
+    block(106, 7, 'question'),
+    ...blockLine(107, 7, 2, 'brick'),
+
+    ...blockLine(118, 4, 3, 'brick'),
+    block(124, 5, 'question'),
+    block(126, 5, 'question'),
+    block(128, 5, 'question'),
+    ...blockLine(130, 7, 4, 'brick'),
+
+    ...blockLine(157, 4, 8, 'brick'),
+    block(160, 7, 'question'),
+    block(164, 7, 'brick'),
+];
+
 const coins = [
-    ...coinLine(430, 330, 4),
-    ...coinLine(1000, 350, 5),
-    ...coinArc(1260, 270, 6),
-    ...coinLine(1900, 320, 4),
-    ...coinLine(2200, 255, 4),
-    ...coinLine(2800, 310, 5),
-    ...coinArc(3330, 245, 6),
-    ...coinLine(3820, 335, 4),
-    ...coinLine(4040, 270, 4),
-    ...coinLine(5050, 285, 5),
-    ...coinArc(5580, 225, 7),
+    ...coinLineByTile(12, 6, 3),
+    ...coinArcByTile(22, 28, 4, 2.1),
+    ...coinLineByTile(31, 6, 4),
+    ...coinArcByTile(50, 57, 4, 2.0),
+    ...coinLineByTile(60, 6, 5),
+    ...coinLineByTile(68, 8, 5),
+    ...coinArcByTile(77, 82, 4, 1.7),
+    ...coinLineByTile(88, 7, 5),
+    ...coinLineByTile(103, 9, 6),
+    ...coinArcByTile(109, 115, 4, 2.2),
+    ...coinLineByTile(124, 7, 5),
+    ...coinLineByTile(148, 7, 5),
+    ...coinArcByTile(179, 189, 6, 3.0),
 ];
 
 const enemies = [
     enemy(TILE * 22, FLOOR_Y, TILE * 18, TILE * 24, 1.2),
-    enemy(TILE * 41, FLOOR_Y, TILE * 31, TILE * 49, 1.35),
+    enemy(TILE * 42, FLOOR_Y, TILE * 31, TILE * 49, 1.35),
     enemy(TILE * 63, FLOOR_Y, TILE * 58, TILE * 75, 1.4),
     enemy(TILE * 90, FLOOR_Y, TILE * 82, TILE * 100, 1.55),
     enemy(TILE * 130, FLOOR_Y, TILE * 115, TILE * 136, 1.45),
@@ -279,23 +317,46 @@ const enemies = [
 ];
 const goal = { x: TILE * 191, y: FLOOR_Y - TILE * 10, w: TILE, h: TILE * 10 };
 const goalHouse = { x: TILE * 195, y: FLOOR_Y - TILE * 3, w: TILE * 6, h: TILE * 3 };
+const moneyItems = [];
+const blockParticles = [];
 
-function coinLine(startX, y, count) {
+function block(tx, heightFromFloor, kind = 'brick') {
+    return {
+        x: TILE * tx,
+        y: FLOOR_Y - TILE * heightFromFloor,
+        w: TILE,
+        h: TILE,
+        kind,
+        broken: false,
+        used: false,
+        bump: 0,
+    };
+}
+
+function blockLine(startTx, heightFromFloor, count, kind = 'brick') {
+    return Array.from({ length: count }, (_, i) => block(startTx + i, heightFromFloor, kind));
+}
+
+function coinLineByTile(startTx, heightFromFloor, count, step = 1) {
     return Array.from({ length: count }, (_, i) => ({
-        x: startX + i * 46,
-        y,
+        x: TILE * (startTx + i * step) + TILE / 2,
+        y: FLOOR_Y - TILE * heightFromFloor,
         r: 12,
         taken: false,
     }));
 }
 
-function coinArc(startX, y, count) {
-    return Array.from({ length: count }, (_, i) => ({
-        x: startX + i * 44,
-        y: y - Math.sin((i / Math.max(1, count - 1)) * Math.PI) * 52,
-        r: 12,
-        taken: false,
-    }));
+function coinArcByTile(startTx, endTx, baseHeightFromFloor, peakTiles = 2) {
+    const count = Math.max(2, endTx - startTx + 1);
+    return Array.from({ length: count }, (_, i) => {
+        const t = i / Math.max(1, count - 1);
+        return {
+            x: TILE * (startTx + i) + TILE / 2,
+            y: FLOOR_Y - TILE * (baseHeightFromFloor + Math.sin(t * Math.PI) * peakTiles),
+            r: 12,
+            taken: false,
+        };
+    });
 }
 
 function enemy(x, bottomY, minX, maxX, speed) {
@@ -359,11 +420,6 @@ function hideDeprecatedPlayerPicker() {
     const input = document.getElementById('player-image-input');
     const fileButton = input ? input.closest('.file-button') : null;
     if (fileButton) fileButton.style.display = 'none';
-
-    const note = document.querySelector('.small-note');
-    if (note) {
-        note.innerHTML = 'プレイヤーは <code>player_stop.png</code> / <code>player_move.png</code> で歩行アニメします。<br />敵は <code>assets/images/player/enemy.png</code> を使用します。';
-    }
 }
 
 function resetGame() {
@@ -377,6 +433,13 @@ function resetGame() {
     cameraX = 0;
 
     for (const coin of coins) coin.taken = false;
+    for (const block of blocks) {
+        block.broken = false;
+        block.used = false;
+        block.bump = 0;
+    }
+    moneyItems.length = 0;
+    blockParticles.length = 0;
     for (const foe of enemies) {
         foe.x = foe.startX;
         foe.vx = foe.startVx;
@@ -426,6 +489,8 @@ function startGame() {
     gameStarted = true;
     startScreen.classList.add('hidden');
     resultScreen.classList.add('hidden');
+    resultScreen.classList.remove('result-win', 'result-lose');
+    if (resultVisual) resultVisual.style.backgroundImage = 'none';
     lastTime = performance.now();
     startBgm();
     requestAnimationFrame(gameLoop);
@@ -436,6 +501,7 @@ function endGame(title, message, isClear) {
     resultKicker.textContent = isClear ? 'COURSE CLEAR' : 'GAME OVER';
     resultTitle.textContent = title;
     resultMessage.textContent = message;
+    setupResultVisual(isClear);
     resultScreen.classList.remove('hidden');
 
     if (isClear) stopBgm();
@@ -515,6 +581,9 @@ function update(dt) {
     }
 
     updateEnemies(dt);
+    updateBlocks(dt);
+    updateMoneyItems(dt);
+    updateBlockParticles(dt);
     collectCoins();
     checkEnemyHits();
     checkGoal();
@@ -538,6 +607,15 @@ function moveHeroX(dx) {
         else if (dx < 0) hero.x = hitbox.x + hitbox.w;
         hero.vx = 0;
     }
+
+    for (const block of blocks) {
+        if (!isSolidBlock(block)) continue;
+        const hitbox = getBlockHitbox(block);
+        if (!rectsOverlap(hero, hitbox)) continue;
+        if (dx > 0) hero.x = hitbox.x - hero.w;
+        else if (dx < 0) hero.x = hitbox.x + hitbox.w;
+        hero.vx = 0;
+    }
 }
 
 function moveHeroY(dy) {
@@ -556,6 +634,21 @@ function moveHeroY(dy) {
             hero.vy = 0;
         }
     }
+
+    for (const block of blocks) {
+        if (!isSolidBlock(block)) continue;
+        const hitbox = getBlockHitbox(block);
+        if (!rectsOverlap(hero, hitbox)) continue;
+        if (dy > 0) {
+            hero.y = hitbox.y - hero.h;
+            hero.vy = 0;
+            hero.grounded = true;
+        } else if (dy < 0) {
+            hero.y = hitbox.y + hitbox.h;
+            hero.vy = 0;
+            hitBlockFromBelow(block);
+        }
+    }
 }
 
 function updateEnemies(dt) {
@@ -570,6 +663,39 @@ function updateEnemies(dt) {
             foe.vx *= -1;
             foe.x = clamp(foe.x, foe.minX, foe.maxX - foe.w);
         }
+    }
+}
+
+function updateBlocks(dt) {
+    for (const block of blocks) {
+        if (block.bump > 0) block.bump = Math.max(0, block.bump - dt);
+    }
+}
+
+function updateMoneyItems(dt) {
+    for (const item of moneyItems) {
+        item.life -= dt;
+        item.y += item.vy * dt;
+        item.vy += 0.16 * dt;
+        item.scale = Math.min(1, item.scale + 0.05 * dt);
+    }
+
+    for (let i = moneyItems.length - 1; i >= 0; i--) {
+        if (moneyItems[i].life <= 0) moneyItems.splice(i, 1);
+    }
+}
+
+function updateBlockParticles(dt) {
+    for (const part of blockParticles) {
+        part.life -= dt;
+        part.x += part.vx * dt;
+        part.y += part.vy * dt;
+        part.vy += 0.38 * dt;
+        part.rot += part.vr * dt;
+    }
+
+    for (let i = blockParticles.length - 1; i >= 0; i--) {
+        if (blockParticles[i].life <= 0 || blockParticles[i].y > H + 80) blockParticles.splice(i, 1);
     }
 }
 
@@ -682,6 +808,8 @@ function draw() {
     drawGoal();
     drawPlatforms();
     drawCoins();
+    drawMoneyItems();
+    drawBlockParticles();
     drawEnemies();
     drawHero();
     ctx.restore();
@@ -759,9 +887,8 @@ function drawPlatforms() {
         if (p.kind === 'ground') drawGround(p);
         else if (p.kind === 'pipe') drawPipe(p);
         else if (p.kind === 'step') drawStep(p);
-        else if (p.kind === 'question') drawQuestionBlocks(p);
-        else drawBrick(p);
     }
+    drawBlocks();
 }
 
 function drawGround(p) {
@@ -789,6 +916,22 @@ function drawGroundTile(x, y, isTop) {
         px(x + 8, y + 13, 14, 4);
         px(x + 20, y + 24, 8, 3);
     }
+}
+
+function drawBlocks() {
+    for (const block of blocks) {
+        if (block.broken || !isVisible(block.x, block.w)) continue;
+        const y = getBlockDrawY(block);
+        if (block.kind === 'question' && !block.used) drawQuestionBlock(block.x, y);
+        else if (block.kind === 'question' && block.used) drawUsedQuestionBlock(block.x, y);
+        else drawBrickBlock(block.x, y);
+    }
+}
+
+function getBlockDrawY(block) {
+    if (!block.bump) return block.y;
+    const progress = (BLOCK_BUMP_FRAMES - block.bump) / BLOCK_BUMP_FRAMES;
+    return block.y - Math.sin(progress * Math.PI) * 9;
 }
 
 function drawBrick(p) {
@@ -842,6 +985,20 @@ function drawQuestionBlock(x, y) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('?', x + TILE / 2, y + TILE / 2 + 1);
+}
+
+function drawUsedQuestionBlock(x, y) {
+    ctx.fillStyle = '#b78448';
+    px(x, y, TILE, TILE);
+    ctx.fillStyle = '#d3a36c';
+    px(x + 3, y + 3, TILE - 6, 6);
+    ctx.fillStyle = '#6b4726';
+    px(x, y, TILE, 2);
+    px(x, y + TILE - 2, TILE, 2);
+    px(x, y, 2, TILE);
+    px(x + TILE - 2, y, 2, TILE);
+    ctx.fillStyle = 'rgba(255,255,255,0.24)';
+    px(x + 11, y + 11, 10, 10);
 }
 
 function drawPipe(p) {
@@ -928,6 +1085,38 @@ function drawSmoothCoin(x, y, r) {
     ctx.fill();
 }
 
+function drawMoneyItems() {
+    for (const item of moneyItems) {
+        const w = 92 * item.scale;
+        const h = 62 * item.scale;
+        const x = item.x - w / 2;
+        const y = item.y - h / 2;
+        if (isLoadedImage(imgOkane)) {
+            drawImageContain(imgOkane, x, y, w, h, true);
+        } else {
+            ctx.fillStyle = '#f9c74f';
+            roundRect(x, y, w, h, 8);
+            ctx.fill();
+            ctx.fillStyle = '#2c2200';
+            ctx.font = 'bold 18px system-ui, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('¥', item.x, item.y);
+        }
+    }
+}
+
+function drawBlockParticles() {
+    for (const part of blockParticles) {
+        ctx.save();
+        ctx.translate(part.x, part.y);
+        ctx.rotate(part.rot);
+        ctx.fillStyle = part.color;
+        px(-part.size / 2, -part.size / 2, part.size, part.size);
+        ctx.restore();
+    }
+}
+
 function drawEnemies() {
     for (const foe of enemies) {
         const drawW = foe.drawW || foe.w;
@@ -1011,6 +1200,38 @@ function drawImageContain(img, x, y, w, h, smoothImage = true) {
     ctx.imageSmoothingEnabled = true;
 }
 
+function setupResultVisual(isClear) {
+    if (!resultVisual) return;
+
+    resultScreen.classList.remove('result-win', 'result-lose');
+    resultVisual.style.backgroundImage = 'none';
+
+    if (isClear) {
+        resultScreen.classList.add('result-win');
+        setResultBackground(imgWin, 'assets/images/player/win.png');
+    } else {
+        resultScreen.classList.add('result-lose');
+        setResultBackground(imgLose, imgLose.src || 'assets/images/player/lose.jpg');
+    }
+}
+
+function setResultBackground(img, fallbackSrc) {
+    if (!resultVisual) return;
+    const src = isLoadedImage(img) ? img.src : fallbackSrc;
+    resultVisual.style.backgroundImage = `url("${src}")`;
+}
+
+function loadImageWithFallback(img, sources) {
+    let index = 0;
+    img.onerror = () => {
+        index += 1;
+        if (index < sources.length) {
+            img.src = sources[index];
+        }
+    };
+    img.src = sources[index];
+}
+
 function isLoadedImage(img) {
     return img && img.complete && img.naturalWidth > 0;
 }
@@ -1039,6 +1260,66 @@ function roundRect(x, y, w, h, radius) {
     ctx.quadraticCurveTo(rx, ry + rh, rx, ry + rh - r);
     ctx.lineTo(rx, ry + r);
     ctx.quadraticCurveTo(rx, ry, rx + r, ry);
+}
+
+function isSolidBlock(block) {
+    return block && !block.broken;
+}
+
+function getBlockHitbox(block) {
+    return { x: block.x, y: block.y, w: block.w, h: block.h };
+}
+
+function hitBlockFromBelow(block) {
+    if (!block || block.broken) return;
+
+    if (block.kind === 'brick') {
+        block.broken = true;
+        spawnBrickParticles(block);
+        state.coins += 1;
+        return;
+    }
+
+    if (block.kind === 'question') {
+        block.bump = BLOCK_BUMP_FRAMES;
+        if (!block.used) {
+            block.used = true;
+            spawnOkaneFromBlock(block);
+            state.coins += 10;
+        }
+    }
+}
+
+function spawnOkaneFromBlock(block) {
+    moneyItems.push({
+        x: block.x + TILE / 2,
+        y: block.y - 8,
+        vy: -5.8,
+        life: 86,
+        scale: 0.22,
+    });
+}
+
+function spawnBrickParticles(block) {
+    const specs = [
+        [-2.8, -6.5, -0.16],
+        [2.8, -6.2, 0.18],
+        [-2.1, -3.5, 0.12],
+        [2.1, -3.2, -0.14],
+    ];
+    for (const [vx, vy, vr] of specs) {
+        blockParticles.push({
+            x: block.x + TILE / 2,
+            y: block.y + TILE / 2,
+            vx,
+            vy,
+            vr,
+            rot: 0,
+            size: 12,
+            color: Math.random() > 0.5 ? '#c96a32' : '#f0a35d',
+            life: 48,
+        });
+    }
 }
 
 function getPlatformHitbox(p) {
@@ -1155,11 +1436,6 @@ document.addEventListener('pointerdown', resumeBgmFromUserGesture, { passive: tr
 document.addEventListener('touchend', resumeBgmFromUserGesture, { passive: true });
 
 if (openBrowserButton) openBrowserButton.addEventListener('click', openExternalBrowser);
-if (continueLineButton) {
-    continueLineButton.addEventListener('click', () => {
-        browserRedirectScreen.classList.add('hidden');
-    });
-}
 
 startButton.addEventListener('click', startGame);
 retryButton.addEventListener('click', startGame);

@@ -758,7 +758,7 @@ function checkGoal() {
 
 function finishGoalResult() {
     const coinCount = state.coins;
-    const amountManYen = coinCount * 10;
+    const amountManYen = coinCount * 5;
 
     if (amountManYen <= 100) {
         const message = coinCount === 0

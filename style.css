@@ -162,7 +162,7 @@ button {
 
 #result-screen .panel {
     position: relative;
-    z-index: 2;
+    z-index: 5;
 }
 
 #result-visual {
@@ -175,11 +175,59 @@ button {
     background-position: center;
 }
 
+/* 記者会見の机とマイクをリザルト画像より上に重ねる。 */
+#result-screen.result-press::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: clamp(78px, 16vh, 116px);
+    z-index: 3;
+    pointer-events: none;
+    background:
+        linear-gradient(to bottom, rgba(214, 214, 214, 0.98) 0 6px, transparent 6px),
+        repeating-linear-gradient(90deg, transparent 0 70px, rgba(222, 222, 222, 0.7) 70px 76px),
+        rgba(255, 255, 255, 0.96);
+    box-shadow: 0 -10px 34px rgba(0, 0, 0, 0.16);
+}
+
+#result-screen.result-press::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: clamp(52px, 10vh, 78px);
+    width: min(68vw, 520px);
+    height: clamp(44px, 8vh, 64px);
+    z-index: 4;
+    pointer-events: none;
+    transform: translateX(-50%);
+    background:
+        radial-gradient(ellipse at 9% 18%, #101010 0 12px, #d8d8d8 13px 17px, transparent 18px),
+        radial-gradient(ellipse at 27% 8%, #101010 0 13px, #d8d8d8 14px 18px, transparent 19px),
+        radial-gradient(ellipse at 45% 18%, #101010 0 12px, #d8d8d8 13px 17px, transparent 18px),
+        radial-gradient(ellipse at 63% 8%, #101010 0 13px, #d8d8d8 14px 18px, transparent 19px),
+        radial-gradient(ellipse at 81% 18%, #101010 0 12px, #d8d8d8 13px 17px, transparent 18px),
+        linear-gradient(70deg, transparent 7%, #222 8% 9%, transparent 10%),
+        linear-gradient(70deg, transparent 25%, #222 26% 27%, transparent 28%),
+        linear-gradient(70deg, transparent 43%, #222 44% 45%, transparent 46%),
+        linear-gradient(70deg, transparent 61%, #222 62% 63%, transparent 64%),
+        linear-gradient(70deg, transparent 79%, #222 80% 81%, transparent 82%);
+}
+
 #result-screen.result-lose #result-visual {
     opacity: 0.96;
     background-repeat: no-repeat;
     background-size: min(98vw, 860px) auto;
     animation: loseImpact 0.42s cubic-bezier(.18, 1.35, .24, 1) both;
+}
+
+#result-screen.result-press-lose #result-visual {
+    z-index: 1;
+    opacity: 0.78;
+    background-size: min(72vw, 600px) auto;
+    background-position: center 38%;
+    animation: pressLoseImpact 0.42s cubic-bezier(.18, 1.2, .24, 1) both;
 }
 
 #result-screen.result-win #result-visual {
@@ -241,14 +289,20 @@ button {
 
 #result-screen.result-press-lose #result-visual::before,
 #result-screen.result-press-lose #result-visual::after {
-    height: clamp(190px, 42vh, 380px);
-    opacity: 0.94;
+    height: clamp(140px, 30vh, 280px);
+    opacity: 0.78;
 }
 
 @keyframes loseImpact {
     0% { transform: scale(0.16) rotate(-5deg); filter: blur(3px); opacity: 0; }
     60% { transform: scale(1.08) rotate(1deg); filter: blur(0); opacity: 1; }
     100% { transform: scale(1); filter: blur(0); opacity: 0.96; }
+}
+
+@keyframes pressLoseImpact {
+    0% { transform: scale(0.18) rotate(-3deg); filter: blur(3px); opacity: 0; }
+    60% { transform: scale(0.92) rotate(0.5deg); filter: blur(0); opacity: 0.82; }
+    100% { transform: scale(0.86); filter: blur(0); opacity: 0.78; }
 }
 
 @keyframes winWallpaper {
